@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "datathon26",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": {
+    "enabled": true,
+  },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "datathon26",
+    },
+  ],
+  // Job metadata: status, verdict, timestamps.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "datathon26-db",
+      "database_id": "227631a0-b4be-4b78-a2e9-4d57173906b6",
+      "migrations_dir": "drizzle",
+    },
+  ],
+  // Uploaded videos (videos/<id>) and analysis results (results/<id>.json).
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "datathon26-videos",
+    },
+  ],
+}

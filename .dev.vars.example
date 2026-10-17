@@ -1,0 +1,8 @@
+# Secrets for local development (`npm run dev` / `npm run preview`).
+# Copy to .dev.vars. In production set them with `npx wrangler secret put <NAME>`.
+
+# Keys the jury sends as X-API-Key to /api/v1/*. Comma-separated.
+API_KEYS=
+
+# Bearer token the analyzer uses for /api/analyzer/*.
+ANALYZER_TOKEN=
