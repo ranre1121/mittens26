@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/.venv
+**/__pycache__
+frontend/.next
+frontend/out
+data
+models
+.git
+.env
+.env.*
+*.local
+.dev.vars

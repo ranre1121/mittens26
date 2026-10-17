@@ -1,0 +1,96 @@
+{
+  "version": "2026-10-17",
+  "notes": "Event vocabulary derived from the team annotations of the 42 training clips. Event IDs are stable; labels, explanations and rule mappings can change. {start} and {end} are filled with mm:ss.s times.",
+  "events": {
+    "previous_client_cash_exposed": {
+      "label": "Ранее принятые наличные оставлены на рабочем месте",
+      "explanation": "С {start} по {end} наличные предыдущего клиента остаются на открытом столе, пока обслуживается следующий клиент; они не убраны в запирающееся хранилище.",
+      "rule_ids": ["nbrk231_p20"],
+      "training_clips": ["X-4", "X-38", "X-47"]
+    },
+    "cash_left_unattended": {
+      "label": "Наличные оставлены без присмотра",
+      "explanation": "С {start} по {end} кассир покидает помещение, оставив наличные или сумку с наличными на открытом столе.",
+      "rule_ids": ["nbrk231_p20"],
+      "training_clips": ["X-15", "X-26"]
+    },
+    "safe_left_open": {
+      "label": "Сейф оставлен открытым",
+      "explanation": "С {start} по {end} дверца сейфа остаётся открытой, пока кассир работает за столом.",
+      "rule_ids": ["nbrk231_p20"],
+      "training_clips": ["X-20"]
+    },
+    "safe_key_left_in_lock": {
+      "label": "Ключ оставлен в замке сейфа",
+      "explanation": "С {start} по {end} ключ остаётся в замке сейфа после того, как кассир отходит от него.",
+      "rule_ids": ["nbrk231_p76_80"],
+      "training_clips": ["X-22"]
+    },
+    "bag_cash_stored_uncounted": {
+      "label": "Наличные из сумки убраны в сейф без пересчёта",
+      "explanation": "С {start} по {end} пачки из вскрытой сумки переносятся в сейф без видимого пересчёта и регистрации.",
+      "rule_ids": ["nbrk231_p24", "nbrk231_p42"],
+      "training_clips": ["X-13"]
+    },
+    "incoming_cash_counted_without_client": {
+      "label": "Пересчёт наличных без присутствия клиента",
+      "explanation": "С {start} по {end} принятые наличные пересчитываются после того, как клиент ушёл.",
+      "rule_ids": ["nbrk231_p19_2", "nbrk231_p20"],
+      "training_clips": ["X-34", "X-17"]
+    },
+    "cash_returned_after_count": {
+      "label": "Часть принятых наличных возвращена клиенту",
+      "explanation": "С {start} по {end} после пересчёта кассир отделяет часть принятых наличных и передаёт её обратно клиенту.",
+      "rule_ids": ["nbrk231_p19_2", "nbrk231_p20"],
+      "training_clips": ["X-1"]
+    },
+    "rejected_banknote_unchecked": {
+      "label": "Отбракованная банкнота принята без проверки",
+      "explanation": "С {start} по {end} банкнота из кармана отбраковки счётной машины возвращается в пачку без проверки на детекторе.",
+      "rule_ids": ["nbrk231_p19_2", "nbrk231_p41"],
+      "training_clips": ["X-44"]
+    },
+    "personal_items_at_workplace": {
+      "label": "Личные вещи на кассовом рабочем месте",
+      "explanation": "С {start} по {end} на кассовом столе находятся личные вещи (верхняя одежда, сумка, напитки).",
+      "rule_ids": ["nbrk231_p12"],
+      "training_clips": ["X-40", "X-46"]
+    },
+    "unauthorized_person_in_cash_room": {
+      "label": "Посторонний в кассовом помещении",
+      "explanation": "С {start} по {end} постороннее лицо входит в кассовое помещение и находится у рабочего места кассира.",
+      "rule_ids": ["nbrk231_p75", "nbrk14_access"],
+      "training_clips": ["X-30", "X-33"]
+    },
+    "cash_room_door_left_open": {
+      "label": "Дверь кассового помещения оставлена открытой",
+      "explanation": "С {start} по {end} дверь кассового помещения остаётся открытой во время работы с наличными.",
+      "rule_ids": ["nbrk14_access"],
+      "training_clips": ["X-32", "X-33"]
+    },
+    "cash_accepted_without_id_check": {
+      "label": "Приём наличных без проверки документа клиента",
+      "explanation": "С {start} по {end} кассир принимает наличные, не запросив и не проверив документ клиента.",
+      "rule_ids": [],
+      "training_clips": ["X-2", "X-17"]
+    },
+    "second_client_before_first_done": {
+      "label": "Обслуживание второго клиента до завершения первого",
+      "explanation": "С {start} по {end} кассир начинает обслуживать следующего клиента, не завершив операцию с текущим.",
+      "rule_ids": [],
+      "training_clips": ["X-18"]
+    },
+    "workstation_left_unlocked": {
+      "label": "Рабочее место оставлено незаблокированным",
+      "explanation": "С {start} по {end} кассир уходит, оставив ноутбук разблокированным или оборудование включённым.",
+      "rule_ids": [],
+      "training_clips": ["X-11", "X-28"]
+    },
+    "journal_stamps_left_unattended": {
+      "label": "Журнал и печати оставлены на столе",
+      "explanation": "С {start} по {end} кассир уходит, оставив кассовый журнал и печати на открытом столе.",
+      "rule_ids": [],
+      "training_clips": ["X-24"]
+    }
+  }
+}

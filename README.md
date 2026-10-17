@@ -1,106 +1,152 @@
-# Контроль кассы — Datathon 26 (ForteBank)
+# Контроль кассы: Datathon 26 (ForteBank)
 
-A web service that checks cashier videos for visible signs of cash-discipline
-violations. Upload a `.mov` and you get a verdict, timecodes, evidence frames
-and the regulation each finding relates to. There is no login: the UI opens
-straight to the upload screen.
+A service that checks silent cashier videos for visible signs of possible
+cash-discipline violations. It returns event types, timecodes, evidence frames
+and regulatory references for a human to review. The web interface and the
+jury API use the same pipeline.
 
-**Next.js 16** (App Router, frontend and API) on **Cloudflare Workers** via
-[OpenNext](https://opennext.js.org/cloudflare), with **D1** for job state and
-**R2** for videos and results.
-
-## Architecture
+This follows `ARCHITECTURE.md`, a modular monolith on one host:
 
 ```
-browser / jury ──► Worker (Next.js) ──► D1  job rows: status, verdict, progress
-                        │          └──► R2  videos/<id>.mov, results/<id>.json
-                        ▲
-                        │ claim → download → progress → result
-                   analyzer (local models, separate process)
+browser / jury ──► FastAPI (api)  ──► SQLite  data/app.sqlite3   (jobs, events)
+                     │  static frontend   └──► files  data/uploads, results, evidence
+                     ▼
+               analysis worker (separate process, claims queued jobs)
+                     └──► pipeline ──► local model weights (models/) + rule registry (rules/)
 ```
 
-The Worker never runs models. The case requires all models to run inside the
-team's own service, with no cloud AI APIs (section 7), and Workers can't run
-video models anyway. The **analyzer** is a separate process (a GPU box, a
-laptop, or a Cloudflare Container) that pulls jobs over HTTP. Until it exists,
-`npm run mock-analyzer` stands in for it.
+- **API** (`backend/app/api.py`): validates and stores uploads, creates
+  queued jobs, and serves results and the static frontend. It never runs
+  inference.
+- **Worker** (`backend/app/worker.py`): loads models once, claims one job at a
+  time, runs the pipeline, saves artifacts, and only then marks the job done.
+- **Frontend** (`frontend/`): Next.js built as a static export (`frontend/out`),
+  served by FastAPI from the same origin.
 
-### Routes
+## Repository layout
 
-| Route                                 | Auth                   | Purpose                                                  |
-| ------------------------------------- | ---------------------- | -------------------------------------------------------- |
-| `/`                                   | —                      | Upload page                                              |
-| `/jobs/<id>`                          | —                      | Live status, verdict, violations, player that seeks       |
-| `POST /api/v1/analyze`                | `X-API-Key`            | Jury API: multipart `file` → `{ job_id }`                 |
-| `GET /api/v1/jobs/<id>`               | `X-API-Key`            | Jury API: `processing` / `done` / `failed` + result       |
-| `POST /api/jobs`, `GET /api/jobs/<id>` | —                      | Same as above for the UI, plus filename/progress          |
-| `GET /api/jobs/<id>/video`            | —                      | Video stream from R2, with Range support                  |
-| `POST /api/analyzer/claim`            | `Bearer ANALYZER_TOKEN` | Next queued job (`204` when empty)                        |
-| `POST /api/analyzer/jobs/<id>/progress` | `Bearer ANALYZER_TOKEN` | `{ "progress": 0–100 }`, also a heartbeat                |
-| `POST /api/analyzer/jobs/<id>/result` | `Bearer ANALYZER_TOKEN` | `{ "violations": [...] }`                                |
-| `POST /api/analyzer/jobs/<id>/fail`   | `Bearer ANALYZER_TOKEN` | `{ "error": "..." }`                                     |
-
-### Analyzer protocol
-
-1. `POST /api/analyzer/claim` → `{ job_id, filename, video_url, attempt, ... }`.
-2. Download `video_url`.
-3. Send `progress` at least every 3 minutes. A claim with no heartbeat for
-   3 minutes goes back to the queue; after 3 attempts the job is marked failed.
-4. Post the `result`, or `fail`.
-
-Result body (validated in `src/lib/result.ts`):
-
-```json
-{
-  "violations": [
-    {
-      "type": "Название типа нарушения",
-      "timecode_sec": 44.2,
-      "description": "Что видно на видео и почему это нарушение",
-      "evidence_frames": [{ "timestamp_sec": 44.2, "image_base64": "/9j/4AAQ..." }],
-      "rule": { "document": "Постановление НБРК № …", "clause": "п. 12", "url": "https://adilet.zan.kz/..." }
-    }
-  ]
-}
+```
+backend/
+  app/
+    api.py          HTTP routes, upload validation, jury and interface views
+    worker.py       job loop, restart recovery
+    jobs.py         job records: atomic claim, complete, fail, requeue
+    db.py           SQLite (WAL, busy timeout, short transactions)
+    storage.py      file layout under data/
+    video.py        PyAV decoding with source presentation timestamps
+    rules.py        event vocabulary + rule registry
+    pipeline/       sampling → detection → consolidation → evidence → rules → explanation
+  tests/
+frontend/           Next.js (static export)
+rules/
+  vocabulary.json   event IDs from the team annotations (stable IDs, labels, explanations)
+  registry.json     candidate rule references; all start unverified
+models/             local model weights (not in git)
+data/               runtime data (not in git)
 ```
 
-The server derives `verdict` from the list: any violations means `violation`,
-none means `no_violation`. `evidence_frames` must hold 1–3 JPEGs. `rule` is
-optional; the UI shows it as the regulatory reference, and the jury API passes
-it through as an extra field.
+## Running locally
 
-## Local development
+Backend (Python 3.11+):
 
 ```bash
-npm install
-cp .dev.vars.example .dev.vars     # fill in API_KEYS and ANALYZER_TOKEN
-npm run db:migrate:local
-npm run dev                        # http://localhost:3000
-
-# in another terminal: process uploads with the stand-in analyzer
-ANALYZER_TOKEN=<from .dev.vars> npm run mock-analyzer -- --url http://localhost:3000
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest
 ```
 
-`npm run preview` builds the Worker and runs it in workerd. This is the closest
-local match to production.
-
-## Deploying
-
-One-time setup (D1 `datathon26-db` already exists):
+Run the API and the worker in two terminals. Both read the same environment
+variables (see `.env.example`):
 
 ```bash
-npx wrangler r2 bucket create datathon26-videos   # R2 must be enabled in the dashboard first
-npm run db:migrate:remote
-npx wrangler secret put API_KEYS                  # key(s) for the jury, comma-separated
-npx wrangler secret put ANALYZER_TOKEN
+cd backend && API_KEYS=dev-key .venv/bin/uvicorn app.api:app --port 8000
 ```
 
-Then deploy with `npm run deploy`.
+```bash
+cd backend && STUB_MODE=demo .venv/bin/python -m app.worker
+```
 
-## Limits
+Frontend, either way:
 
-- Uploads are capped at 95 MB, because Workers reject request bodies over 100 MB.
-  The case videos are about 29 MB.
-- `.mov` is served as `video/mp4` so browsers play H.264 QuickTime files.
-- The jury counts a video as unprocessed after 5 minutes. Keep at least one
-  analyzer running and polling.
+- **Through FastAPI:** run `cd frontend && npm install && npm run build`, then
+  open http://localhost:8000. FastAPI serves `frontend/out`.
+- **With hot reload:** run `cd frontend && npm run dev`, then open
+  http://localhost:3000. `next dev` proxies `/api` to port 8000.
+
+## Deploying (one host)
+
+```bash
+cp .env.example .env      # set API_KEYS
+docker compose up -d --build
+```
+
+This starts `api` (port 8000) and `worker` from one image, sharing `./data`.
+Put an HTTPS reverse proxy in front of port 8000 for the public URL. Once a GPU
+model is integrated, switch the image base to CUDA and uncomment the GPU block
+in `docker-compose.yml`. Verify that analysis works with networking disabled.
+
+## API
+
+### Jury API (`X-API-Key` required)
+
+| Method | Path | |
+|---|---|---|
+| `POST` | `/api/v1/analyze` | multipart `file` (.mov) → `{"job_id": "…"}` |
+| `GET` | `/api/v1/jobs/{job_id}` | `processing` / `failed` / `done` with the case schema |
+
+The response contains exactly the fields from section 10 of the case. That
+schema has no rule field, so the regulatory reference is appended to
+`description` ("Норматив: …").
+
+### Interface API (no key)
+
+The interface has no login, so these routes need no key.
+
+| Method | Path | |
+|---|---|---|
+| `POST` | `/api/jobs` | same upload as `/api/v1/analyze` |
+| `GET` | `/api/jobs/{job_id}` | state, stage, progress, queue position, structured rules, evidence URLs |
+| `GET` | `/api/jobs/{job_id}/video` | uploaded video, supports Range requests |
+| `GET` | `/api/jobs/{job_id}/evidence/{name}` | evidence JPEG |
+
+## Job lifecycle
+
+`queued → running → done | failed`. The public status reports `queued` and
+`running` as `processing`.
+
+- **Uploads:** each upload streams into `data/tmp`, gets probed with PyAV, and
+  only then moves to `data/uploads/<job_id>/`. Partial or invalid uploads never
+  become jobs.
+- **Claiming:** the worker claims jobs atomically (`BEGIN IMMEDIATE`) and
+  records the attempt count and stage.
+- **Completing:** `data/results/<job_id>/result.json` and the evidence JPEGs
+  are written before the job is marked `done`. A retry deletes the previous
+  attempt's artifacts first.
+- **Restart recovery:** when the worker starts, it requeues jobs left
+  `running`. A job that has already used `MAX_ATTEMPTS` is marked failed
+  instead.
+- **Failures:** a processing failure is reported as `failed`, never as
+  `no_violation`.
+
+## Pipeline status
+
+`backend/app/pipeline/` has the full stage structure. Detection is still a
+stub (`StubDetector`):
+
+- `STUB_MODE=none` reports no events.
+- `STUB_MODE=demo` reports one synthetic event per video to exercise
+  evidence, rules and output. Never use it for judging.
+
+To integrate a model, implement the `Detector` protocol in
+`pipeline/detectors.py`. Load weights from `MODELS_DIR` in `__init__`, return
+`CandidateEvent`s whose `event_type` is an ID from `rules/vocabulary.json`,
+and return it from `build_detector()`.
+
+## Rule references
+
+Every entry in `rules/registry.json` starts with `verified: false`, and
+unverified rules are not cited. Until someone checks a provision on
+adilet.zan.kz and sets `verified: true`, descriptions say the reference awaits
+verification. `ALLOW_UNVERIFIED_RULES=true` cites them anyway, marked
+"[не проверено]".
