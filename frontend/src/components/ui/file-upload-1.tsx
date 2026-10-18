@@ -9,6 +9,7 @@ import { UploadArtwork } from "@/components/UploadArtwork";
 import { UploadCompletionMark } from "@/components/UploadCompletionMark";
 import { UploadPageTransition } from "@/components/UploadPageTransition";
 import { jobHref } from "@/lib/job-links";
+import { CSRF_HEADER, notifyAuthRequired } from "@/lib/session";
 
 // Set at build time: 95 on Cloudflare Workers (100 MB request limit), 500 self-hosted.
 const MAX_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 500);
@@ -95,12 +96,14 @@ function upload(file: File, onProgress: (loaded: number) => void) {
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/jobs");
+    xhr.setRequestHeader(...CSRF_HEADER);
     xhr.upload.onprogress = (e) => onProgress(e.loaded);
     xhr.onload = () => {
       let body: { job_id?: string; detail?: unknown } = {};
       try {
         body = JSON.parse(xhr.responseText);
       } catch {}
+      if (xhr.status === 401) notifyAuthRequired();
       if (xhr.status < 300 && body.job_id) resolve(body.job_id);
       else reject(new Error(typeof body.detail === "string" ? body.detail : `Ошибка сервера (${xhr.status})`));
     };

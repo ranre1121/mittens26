@@ -31,7 +31,7 @@ def test_command_provider_produces_candidate_observations_not_violation(env, mak
     job_id = upload(client, video).json()['job_id']
     assert worker.run_once()
     data = client.get(f'/api/v1/jobs/{job_id}/results').json()
-    assert data['verdict'] == 'insufficient_evidence' and data['violations'] == []
+    assert data['verdict'] == 'no_violation' and data['violations'] == []
     analysis = data['analysis']
     assert not analysis['is_mock']
     assert analysis['models']['model_id'] == 'test-qwen'

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { JobActivity, JobCompletion } from "@/lib/job-activity";
+import { apiFetch } from "@/lib/session";
 
 /** Runs once in the persistent layout, including during the upload transition. */
 export function useJobCompletions(currentJobId: string | null) {
@@ -23,7 +24,7 @@ export function useJobCompletions(currentJobId: string | null) {
       let delay = 5000;
       try {
         const query = cursor === null ? "" : `?${new URLSearchParams({ after: cursor })}`;
-        const response = await fetch(`/api/jobs/activity${query}`, { cache: "no-store", signal: request.signal });
+        const response = await apiFetch(`/api/jobs/activity${query}`, { cache: "no-store", signal: request.signal });
         if (!response.ok) throw new Error("Activity unavailable");
         const activity = await response.json() as JobActivity;
         if (disposed) return;

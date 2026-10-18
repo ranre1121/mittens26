@@ -54,6 +54,11 @@ class Settings:
     max_video_pixels: int = 3840 * 2160
     max_pending_jobs: int = 20
     yolo_config: Path | None = None
+    # Browser sessions: the key login sets a signed cookie valid this long.
+    session_hours: float = 12
+    # Signs session cookies. Empty: derived from API_KEYS, so changing the keys
+    # also ends every session.
+    session_secret: str = ""
 
     def __post_init__(self):
         import math
@@ -71,7 +76,7 @@ class Settings:
             raise ValueError("Qwen executable is missing or not executable")
         if self.stub_mode != "none":
             raise ValueError("STUB_MODE=demo is retired: synthetic compliance events are forbidden")
-        for value in (self.sample_fps, self.job_timeout_seconds, self.max_video_seconds, self.worker_poll_seconds):
+        for value in (self.sample_fps, self.job_timeout_seconds, self.max_video_seconds, self.worker_poll_seconds, self.session_hours):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError("Runtime limits must be finite and positive")
         if not 0 < self.sample_fps <= 30 or min(self.max_upload_bytes, self.max_pending_jobs, self.max_video_pixels, self.max_attempts) <= 0:
@@ -95,6 +100,8 @@ def load_settings() -> Settings:
         max_video_seconds=float(os.environ.get("MAX_VIDEO_SECONDS", "1800")),
         max_pending_jobs=int(os.environ.get("MAX_PENDING_JOBS", "20")),
         yolo_config=Path(os.environ["YOLO_CONFIG"]).resolve() if os.environ.get("YOLO_CONFIG") else None,
+        session_hours=float(os.environ.get("SESSION_HOURS", "12")),
+        session_secret=os.environ.get("SESSION_SECRET", ""),
         data_dir=_path("DATA_DIR", REPO_ROOT / "data"),
         rules_dir=_path("RULES_DIR", REPO_ROOT / "rules"),
         models_dir=_path("MODELS_DIR", REPO_ROOT / "models"),

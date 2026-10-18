@@ -1,5 +1,8 @@
 import { UploadPanel } from "@/components/UploadPanel";
 
+// Same build-time limit as the upload panel: 95 on Cloudflare Workers, 500 self-hosted.
+const MAX_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 500);
+
 export default function Home() {
   return (
     <div className="home-workspace">
@@ -14,7 +17,7 @@ export default function Home() {
         <details id="how-it-works">
           <summary>Как проходит проверка <span aria-hidden="true">+</span></summary>
           <ol>
-            <li><strong>Добавьте записи.</strong> Выберите видео MOV, MP4 или M4V до 500 МБ. Перед отправкой можно убрать лишние файлы.</li>
+            <li><strong>Добавьте записи.</strong> Выберите видео MOV, MP4 или M4V до {MAX_MB} МБ. Перед отправкой можно убрать лишние файлы.</li>
             <li><strong>Отправьте на анализ.</strong> Страница проверки откроется автоматически после загрузки. Если записей несколько, переключайтесь между ними на странице проверки.</li>
             <li><strong>Проверьте события.</strong> Сопоставьте отмеченные фрагменты, таймкоды и нормативы. Решение остаётся за проверяющим.</li>
           </ol>

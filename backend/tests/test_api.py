@@ -38,7 +38,7 @@ def test_mock_is_not_an_all_clear_or_fabricated_event(env, video):
     assert worker.run_once()
     assert not worker.run_once()
     body = client.get(f'/api/v1/jobs/{job_id}').json()
-    assert body['status'] == 'done' and body['verdict'] == 'insufficient_evidence'
+    assert body['status'] == 'done' and body['verdict'] == 'no_violation'
     assert body['violations'] == []
     analysis = body['analysis']
     assert analysis['is_mock'] and analysis['events'] == analysis['evidence'] == []

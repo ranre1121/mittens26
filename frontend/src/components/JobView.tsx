@@ -9,6 +9,7 @@ import { AnalysisDashboard } from "@/components/review/AnalysisDashboard";
 import { ProcessingReview } from "@/components/review/ProcessingReview";
 import Button10 from "@/components/watermelon/button-10";
 import styles from "@/components/review/review.module.css";
+import { apiFetch } from "@/lib/session";
 
 const POLL_MS = 2000;
 const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Almaty" });
@@ -28,7 +29,7 @@ function useJob(id: string): Load {
 
     async function poll() {
       try {
-        const res = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+        const res = await apiFetch(`/api/jobs/${id}`, { cache: "no-store" });
         if (cancelled) return;
         if (res.status === 404) return setLoad({ kind: "missing" });
         if (!res.ok) throw new Error(`Ошибка сервера (${res.status})`);

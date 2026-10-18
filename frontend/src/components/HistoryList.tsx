@@ -8,6 +8,7 @@ import { jobHref } from "@/lib/job-links";
 import { HistoryVideoPreview } from "@/components/HistoryVideoPreview";
 import Pagination9 from "@/components/watermelon/pagination-9";
 import styles from "@/components/review/review.module.css";
+import { apiFetch } from "@/lib/session";
 
 const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Almaty" });
 const timeFormat = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Almaty" });
@@ -33,7 +34,7 @@ function useHistory(query: HistoryQuery, revision: number) {
       const current = new AbortController();
       request = current;
       try {
-        const response = await fetch(`/api/jobs?${key}`, { cache: "no-store", signal: current.signal });
+        const response = await apiFetch(`/api/jobs?${key}`, { cache: "no-store", signal: current.signal });
         if (!response.ok) throw new Error("Не удалось загрузить историю. Попробуйте ещё раз.");
         const data = await response.json() as HistoryResponse;
         if (!disposed && !current.signal.aborted) setSnapshot({ key, revision, data, error: null });

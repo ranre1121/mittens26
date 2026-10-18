@@ -40,7 +40,7 @@ class QwenProvider:
     def infer(self, request):
         cfg = self.settings
         if cfg.qwen_provider == 'mock':
-            return {'events': [], 'is_mock': True, 'limitations': ['Stub provider: no Qwen weights loaded; no semantic evidence produced.']}
+            return {'events': [], 'checklist': [], 'is_mock': True, 'limitations': ['Stub provider: no Qwen weights loaded; no semantic evidence produced.']}
         # Temporary files bound memory even if a broken executable floods stdout.
         with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
             import sys
@@ -57,7 +57,8 @@ class QwenProvider:
                 raise ValueError('Qwen response exceeds 2 MiB')
             out.seek(0)
             response = json.load(out)
-        if not isinstance(response, dict) or set(response) != {'schema_version', 'model_id', 'model_version', 'events'}:
+        required = {'schema_version', 'model_id', 'model_version', 'events'}
+        if not isinstance(response, dict) or not required <= set(response) <= required | {'checklist'}:
             raise ValueError('Invalid Qwen response fields')
         if (response['schema_version'], response['model_id'], response['model_version']) != ('datathon.qwen.v1', cfg.qwen_model_id, cfg.qwen_model_version):
             raise ValueError('Qwen model/version contract mismatch')
@@ -81,4 +82,28 @@ class QwenProvider:
                 raise ValueError('Event must cite sampled source frames')
             if not min(available[x] for x in refs) <= a <= b <= max(available[x] for x in refs):
                 raise ValueError('Event interval must be bracketed by cited frame timestamps')
-        return {'events': events, 'is_mock': False, 'limitations': ['Model observations require reviewed identity, transaction linkage and coverage before rules can support a finding.']}
+        checklist = validate_checklist(response.get('checklist', []), request)
+        return {'events': events, 'checklist': checklist, 'is_mock': False, 'limitations': ['Model observations require reviewed identity, transaction linkage and coverage before rules can support a finding.']}
+
+
+
+def validate_checklist(rows, request):
+    """Per-window visual checklist from qwen_runner.checklist: values are
+    true/false/null and cited frames must be frames the model was given."""
+    if not isinstance(rows, list) or len(rows) > 200:
+        raise ValueError('Checklist must be a list of at most 200 windows')
+    available = {f['frame_ref'] for f in request['frames']}
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get('items'), dict):
+            raise ValueError('Invalid checklist window')
+        a, b = row.get('start_s'), row.get('end_s')
+        if any(type(x) not in (int, float) or not math.isfinite(x) for x in (a, b)) or not 0 <= a <= b <= request['duration_sec'] + 1:
+            raise ValueError('Invalid checklist window interval')
+        for item in row['items'].values():
+            if not isinstance(item, dict) or item.get('value') not in (True, False, None):
+                raise ValueError('Invalid checklist value')
+            if item.get('frame_ref') is not None and item['frame_ref'] not in available:
+                raise ValueError('Checklist cites a frame that was not supplied')
+            if not isinstance(item.get('note', ''), str) or len(item.get('note', '')) > 300:
+                raise ValueError('Invalid checklist note')
+    return rows

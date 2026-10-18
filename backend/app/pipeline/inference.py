@@ -4,6 +4,7 @@ from pathlib import Path
 from app.cashrules import evaluate
 from app.cashrules.contracts import Sequence
 from app.pipeline.providers import QwenProvider, capabilities, file_hash
+from app.pipeline import violations
 
 
 class InferenceDetector:
@@ -57,6 +58,7 @@ class InferenceDetector:
             'evidence': sequence['evidence'], 'video_sha256': digest,
             'frames': [{k: v for k, v in f.items() if k != 'path'} for f in frames],
             'yolo_provenance': detector.provenance if detector else None,
+            'checklist': response.get('checklist', []),
             'annotated_output': None}
-        # Only reviewed rule candidates belong in legacy violation findings.
-        return []
+        # Violations: deterministic rules over Qwen's per-window visual checklist.
+        return violations.detect(response.get('checklist', []), timestamps)

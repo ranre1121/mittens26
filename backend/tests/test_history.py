@@ -80,7 +80,7 @@ def test_upload_worker_result_history_and_notification(env, video):
     assert worker.run_once()
     result = client.get(f"/api/jobs/{job_id}").json()
     assert result["analysis"]["is_mock"] and result["analysis"]["limitations"]
-    assert result["violations"] == [] and result["verdict"] == "insufficient_evidence"
+    assert result["violations"] == [] and result["verdict"] == "no_violation"
     assert result["analysis"]["rule_evaluation"]["decision"] == "insufficient_evidence"
     item = client.get("/api/jobs?status=done").json()["items"][0]
     assert item["id"] == job_id and item["violationCount"] == len(result["violations"])

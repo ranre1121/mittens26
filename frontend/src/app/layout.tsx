@@ -5,6 +5,7 @@ import { JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { UploadTransitionProvider } from "@/components/UploadPageTransition";
 import { AppNav } from "@/components/AppNav";
+import { AuthGate, AuthProvider } from "@/components/AuthGate";
 import "./globals.css";
 
 const openSans = localFont({
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col font-sans">
         <a href="#main-content" className="skip-link">Перейти к содержимому</a>
+        <AuthProvider>
         <header className="app-header">
           <div className="app-header-inner">
             <div className="app-brand">
@@ -46,8 +48,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         <main id="main-content" className="main-content flex-1" tabIndex={-1}>
-          <UploadTransitionProvider>{children}</UploadTransitionProvider>
+          <AuthGate>
+            <UploadTransitionProvider>{children}</UploadTransitionProvider>
+          </AuthGate>
         </main>
+        </AuthProvider>
         <footer className="app-footer">
           <span>Forte · Видеоаналитика</span>
           <p>Результат помогает проверить запись. Окончательное решение принимает специалист.</p>

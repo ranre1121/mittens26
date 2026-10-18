@@ -262,3 +262,20 @@ button:disabled { cursor: not-allowed; }
   .upload-elastic-outline path, .button-primary, .button-secondary, .button-arrow, .upload-remove, .workspace-help summary span { transition: none; }
   .button-primary:active:not(:disabled), .button-secondary:active:not(:disabled), .upload-remove:active:not(:disabled), .button-primary:hover:not(:disabled) .button-arrow { transform: none; }
 }
+
+/* Login (key → 12-hour session cookie) */
+.auth-checking { max-width: 28rem; margin: 6rem auto; text-align: center; color: var(--muted); }
+.auth-card { max-width: 28rem; margin: clamp(3rem, 10vh, 7rem) auto; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; }
+.auth-card h1 { font-size: 1.5rem; font-weight: 600; }
+.auth-hint { margin-top: .5rem; color: var(--muted); }
+.auth-form { display: grid; gap: .5rem; margin-top: 1.5rem; }
+.auth-form label { font-size: .875rem; color: var(--muted); }
+.auth-form input { min-height: 2.75rem; padding: 0 .875rem; background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: .5rem; }
+.auth-form input:focus-visible { outline: 2px solid var(--border-strong); outline-offset: 2px; }
+.auth-form input[aria-invalid="true"] { border-color: var(--danger); }
+.auth-error { color: var(--danger); font-size: .875rem; }
+.auth-submit { margin-top: 1rem; min-height: 2.75rem; padding: 0 1.25rem; background: var(--primary); color: var(--foreground); border-radius: .5rem; font-weight: 600; transition: background 160ms ease-out; }
+.auth-submit:hover:not(:disabled) { background: var(--primary-hover); }
+.auth-submit:disabled { opacity: .55; }
+.app-nav-logout { min-height: 2.75rem; color: var(--muted); transition: color 160ms ease-out; }
+.app-nav-logout:hover { color: var(--foreground); }

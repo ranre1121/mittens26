@@ -1,6 +1,8 @@
 """FastAPI on a Cloudflare Python Worker: the interface API and the jury API,
-with jobs in D1 and media in R2. No analysis runs here: jobs stay queued
-("processing") until an analysis worker is connected.
+with jobs in D1 and media in R2. No analysis runs here: a GPU machine running
+`python -m app.remote` (backend/app/remote.py) pulls queued jobs through the
+/api/analyzer/* routes, authenticated with the ANALYZER_TOKEN secret, and
+posts results back. Until one is connected, jobs stay queued ("processing").
 
 Uploads and video playback bypass FastAPI. The ASGI adapter copies the whole
 request body into Python memory, and ~30 MB videos would push the Worker
@@ -29,6 +31,11 @@ VIDEO_BOXES = (b"ftyp", b"moov", b"mdat", b"wide", b"free", b"skip", b"pnot")
 EVIDENCE_NAME = re.compile(r"^e\d+-[\d.]+\.jpg$")
 UPLOAD_PATHS = {"/api/v1/analyze": True, "/api/jobs": False}  # path -> needs key
 VIDEO_PATH = re.compile(r"^/api/jobs/([0-9a-f]{12})/video$")
+ANALYZER_MEDIA = re.compile(r"^/api/analyzer/jobs/([0-9a-f]{12})/(?:video|evidence/(e\d+-[\d.]+\.jpg))$")
+# A running job whose analyzer has not reported for this long goes back to the queue.
+STALE_SECONDS = 120
+MAX_ATTEMPTS = 3
+MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
 
 
 def js_obj(d: dict):
@@ -48,8 +55,18 @@ def api_key_ok(env, given: str | None) -> bool:
     return bool(given) and any(secrets.compare_digest(given, k) for k in keys)
 
 
+def analyzer_ok(env, authorization: str | None) -> bool:
+    token = str(getattr(env, "ANALYZER_TOKEN", "") or "")
+    return bool(token) and bool(authorization) and secrets.compare_digest(authorization, f"Bearer {token}")
+
+
 def max_upload_bytes(env) -> int:
     return int(float(getattr(env, "MAX_UPLOAD_MB", "95") or 95) * 1024 * 1024)
+
+
+def as_bytes(buffer) -> bytes:
+    """R2 bodies through the SDK arrive as memoryview; raw JS buffers as proxies."""
+    return bytes(buffer) if isinstance(buffer, memoryview) else buffer.to_bytes()
 
 
 def py(value):
@@ -149,6 +166,36 @@ async def handle_video(js_req, env, job_id: str):
     return JsResponse.new(obj.body, status=200, headers=JsHeaders.new(to_js(headers)))
 
 
+async def handle_analyzer_media(js_req, env, job_id: str, evidence_name: str | None):
+    """Video download and evidence upload for the analyzer, on the JavaScript
+    side for the same memory reason as uploads."""
+    if not analyzer_ok(env, js_req.headers.get("authorization")):
+        return await reject(js_req, {"detail": "Analyzer token required"}, 401)
+    job = await d1_first(env, "SELECT state, input_path FROM jobs WHERE id = ?", job_id)
+    if job is None:
+        return await reject(js_req, {"detail": "Job not found"}, 404)
+    if job["state"] != "running":
+        return await reject(js_req, {"detail": "Job is not running"}, 409)
+    if evidence_name is None:
+        if js_req.method != "GET":
+            return await reject(js_req, {"detail": "Method not allowed"}, 405)
+        obj = await env.MEDIA.get(job["input_path"])
+        if obj is None:
+            return js_json({"detail": "Video not found"}, 404)
+        headers = [["content-type", "application/octet-stream"], ["content-length", str(int(obj.size))]]
+        return JsResponse.new(obj.body, status=200, headers=JsHeaders.new(to_js(headers)))
+    if js_req.method != "PUT":
+        return await reject(js_req, {"detail": "Method not allowed"}, 405)
+    if int(js_req.headers.get("content-length") or 0) > MAX_EVIDENCE_BYTES:
+        return await reject(js_req, {"detail": "Evidence frame too large"}, 413)
+    data = await js_req.arrayBuffer()
+    if data.byteLength > MAX_EVIDENCE_BYTES:
+        return js_json({"detail": "Evidence frame too large"}, 413)
+    await env.MEDIA.put(f"evidence/{job_id}/{evidence_name}", data,
+                        js_obj({"httpMetadata": js_obj({"contentType": "image/jpeg"})}))
+    return js_json({"ok": True})
+
+
 # ---------- FastAPI: everything else ----------
 
 app = FastAPI(title="Контроль кассы", version="0.1.0")
@@ -176,12 +223,126 @@ async def read_bytes(env, key: str) -> bytes:
     obj = await env.MEDIA.get(key)
     if obj is None:
         raise HTTPException(500, f"Missing object {key}")
-    return (await obj.arrayBuffer()).to_bytes()
+    return as_bytes(await obj.arrayBuffer())
 
 
 @app.get("/api/health")
-async def health():
-    return {"ok": True, "analysis": "not connected"}
+async def health(request: Request):
+    seen = await d1_first(env_of(request), "SELECT seen_at FROM analyzer_status WHERE id = 1")
+    connected = seen is not None and time.time() - seen["seen_at"] < 90
+    return {"ok": True, "analysis": "connected" if connected else "not connected"}
+
+
+# ---------- analyzer: the GPU machine pulls jobs from here ----------
+
+
+def require_analyzer(request: Request):
+    if not analyzer_ok(env_of(request), request.headers.get("authorization")):
+        raise HTTPException(401, "Analyzer token required")
+    return env_of(request)
+
+
+@app.post("/api/analyzer/claim")
+async def analyzer_claim(request: Request):
+    """Hand the oldest queued job to the analyzer, after requeueing jobs whose
+    analyzer went silent (bounded by MAX_ATTEMPTS, like the local worker)."""
+    env = require_analyzer(request)
+    now, stale = time.time(), time.time() - STALE_SECONDS
+    await env.DB.prepare(
+        "UPDATE jobs SET state = 'failed', stage = 'failed', finished_at = ?,"
+        " error = 'Analysis was interrupted ' || attempts || ' times; giving up.'"
+        " WHERE state = 'running' AND COALESCE(heartbeat_at, started_at) < ? AND attempts >= ?"
+    ).bind(now, stale, MAX_ATTEMPTS).run()
+    await env.DB.prepare(
+        "UPDATE jobs SET state = 'queued', stage = 'requeued', progress = 0"
+        " WHERE state = 'running' AND COALESCE(heartbeat_at, started_at) < ?"
+    ).bind(stale).run()
+    info = json.dumps(await request.json(), ensure_ascii=False)[:2000] if await request.body() else "{}"
+    # Last-seen for /api/health; written at most every 30 s.
+    await env.DB.prepare(
+        "INSERT INTO analyzer_status (id, seen_at, info) VALUES (1, ?, ?)"
+        " ON CONFLICT (id) DO UPDATE SET seen_at = excluded.seen_at, info = excluded.info"
+        " WHERE analyzer_status.seen_at < ?"
+    ).bind(now, info, now - 30).run()
+    job = await d1_first(
+        env,
+        "UPDATE jobs SET state = 'running', started_at = ?, heartbeat_at = ?, attempts = attempts + 1,"
+        " stage = 'claimed', progress = 0, error = NULL"
+        " WHERE id = (SELECT id FROM jobs WHERE state = 'queued' ORDER BY created_at LIMIT 1) AND state = 'queued'"
+        " RETURNING id, filename, input_path, attempts",
+        now, now,
+    )
+    return job if job else Response(status_code=204)
+
+
+@app.post("/api/analyzer/jobs/{job_id}/progress")
+async def analyzer_progress(job_id: str, request: Request):
+    env = require_analyzer(request)
+    body = await request.json()
+    stage, progress = str(body.get("stage", "running"))[:40], int(body.get("progress", 0))
+    row = await d1_first(
+        env,
+        "UPDATE jobs SET stage = ?, progress = ?, heartbeat_at = ? WHERE id = ? AND state = 'running' RETURNING id",
+        stage, max(0, min(99, progress)), time.time(), job_id,
+    )
+    if row is None:
+        raise HTTPException(409, "Job is not running")
+    return {"ok": True}
+
+
+@app.post("/api/analyzer/jobs/{job_id}/complete")
+async def analyzer_complete(job_id: str, request: Request):
+    """Store the result (same format as backend/app/jobs.py) in R2, then mark
+    the job done. Evidence frames were uploaded before this call."""
+    env = require_analyzer(request)
+    job = await load_job(env, job_id)
+    if job["state"] != "running":
+        raise HTTPException(409, "Job is not running")
+    body = await request.json()
+    result, events = body.get("result"), body.get("events", [])
+    if not isinstance(result, dict) or not isinstance(result.get("violations"), list) or not isinstance(events, list):
+        raise HTTPException(422, "Invalid result")
+    prefix = f"evidence/{job_id}/"
+    for v in result["violations"]:
+        for f in v.get("evidence_frames", []):
+            name = str(f.get("path", ""))[len(prefix):]
+            if not str(f.get("path", "")).startswith(prefix) or not EVIDENCE_NAME.match(name):
+                raise HTTPException(422, "Invalid evidence path")
+    result["job_id"] = job_id
+    result_key = f"results/{job_id}/result.json"
+    await env.MEDIA.put(result_key, json.dumps(result, ensure_ascii=False),
+                        js_obj({"httpMetadata": js_obj({"contentType": "application/json"})}))
+    now = time.time()
+    statements = [env.DB.prepare("DELETE FROM events WHERE job_id = ?").bind(job_id)]
+    for e in events[:500]:
+        statements.append(env.DB.prepare(
+            "INSERT INTO events (job_id, event_id, event_type, start_sec, end_sec, representative_sec,"
+            " confidence, explanation, rule_ids, evidence_paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).bind(job_id, str(e["event_id"]), str(e["event_type"]), float(e["start_sec"]), float(e["end_sec"]),
+               float(e["representative_sec"]), float(e["confidence"]) if e.get("confidence") is not None else None,
+               str(e["explanation"]), str(e["rule_ids"]), str(e["evidence_paths"])))
+    duration = body.get("duration_sec")
+    statements.append(env.DB.prepare(
+        "UPDATE jobs SET state = 'done', verdict = NULL, result_path = ?, finished_at = ?, stage = 'done',"
+        " progress = 100, duration_sec = ? WHERE id = ? AND state = 'running'"
+    ).bind(result_key, now, float(duration) if duration is not None else None, job_id))
+    await env.DB.batch(statements)
+    return {"ok": True}
+
+
+@app.post("/api/analyzer/jobs/{job_id}/fail")
+async def analyzer_fail(job_id: str, request: Request):
+    env = require_analyzer(request)
+    body = await request.json()
+    row = await d1_first(
+        env,
+        "UPDATE jobs SET state = 'failed', error = ?, finished_at = ?, stage = 'failed'"
+        " WHERE id = ? AND state = 'running' RETURNING id",
+        str(body.get("error") or "Analysis failed")[:2000], time.time(), job_id,
+    )
+    if row is None:
+        raise HTTPException(409, "Job is not running")
+    return {"ok": True}
 
 
 @app.get("/api/v1/jobs/{job_id}")
@@ -323,6 +484,7 @@ async def ui_job(job_id: str, request: Request):
         return view
     result = await load_result(env, job)
     view["verdict"] = result["verdict"]
+    view["analysis"] = result.get("analysis", {})
     view["violations"] = [
         {
             **{k: v[k] for k in ("event_id", "event_type", "type", "timecode_sec", "start_sec", "end_sec",
@@ -349,7 +511,7 @@ async def ui_evidence(job_id: str, name: str, request: Request):
     obj = await env.MEDIA.get(f"evidence/{job_id}/{name}")
     if obj is None:
         raise HTTPException(404, "Evidence frame not found")
-    return Response((await obj.arrayBuffer()).to_bytes(), media_type="image/jpeg")
+    return Response(as_bytes(await obj.arrayBuffer()), media_type="image/jpeg")
 
 
 class Default(WorkerEntrypoint):
@@ -360,4 +522,6 @@ class Default(WorkerEntrypoint):
             return await handle_upload(js_req, self.env, UPLOAD_PATHS[path])
         if js_req.method in ("GET", "HEAD") and (m := VIDEO_PATH.match(path)):
             return await handle_video(js_req, self.env, m.group(1))
+        if m := ANALYZER_MEDIA.match(path):
+            return await handle_analyzer_media(js_req, self.env, m.group(1), m.group(2))
         return await asgi.fetch(app, request, self.env, self.ctx)

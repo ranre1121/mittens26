@@ -79,7 +79,9 @@ def complete(
     pipeline_meta: dict,
 ) -> None:
     analysis = pipeline_meta.get("analysis", {})
-    verdict = analysis.get("rule_evaluation", {}).get("decision", "insufficient_evidence")
+    # The jury schema has exactly two verdicts. The evidence-gated engine's
+    # decision stays available in analysis.rule_evaluation.
+    verdict = "violation" if findings else "no_violation"
     result = {
         "job_id": job_id,
         "verdict": verdict,
@@ -148,7 +150,7 @@ def complete(
         conn.execute(
             "UPDATE jobs SET state = 'done', verdict = ?, result_path = ?, finished_at = ?,"
             " stage = 'done', progress = 100, duration_sec = ? WHERE id = ?",
-            (None, storage.relative(result_path), time.time(), info.duration_sec, job_id),
+            (verdict, storage.relative(result_path), time.time(), info.duration_sec, job_id),
         )
 
 

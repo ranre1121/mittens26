@@ -23,11 +23,12 @@ from typing import Annotated, Iterator, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from app import jobs
+from app import jobs, session
 from app.config import Settings, load_settings
 from app.db import connect, init_db
 from app.history import list_completions, list_history
@@ -38,6 +39,17 @@ from app.limits import UploadLimitMiddleware
 
 CHUNK = 1024 * 1024
 EVIDENCE_NAME = re.compile(r"^e\d+-[\d.]+\.jpg$")
+# Reachable without a key: probes, and the login endpoint itself.
+OPEN_PATHS = {"/api/health", "/api/ready", "/api/session"}
+# Cookie-authenticated writes must carry this header. Cross-site forms can't
+# set custom headers, so this blocks request forgery on top of SameSite=Strict.
+CSRF_HEADER = "x-requested-with"
+CSRF_VALUE = "kassa-control"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+class LoginBody(BaseModel):
+    key: str
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -69,16 +81,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     Db = Annotated[sqlite3.Connection, Depends(db)]
 
+    session_key = session.signing_key(settings.session_secret, settings.api_keys)
+    login_throttle = session.LoginThrottle()
+
+    def header_key_ok(request: Request) -> bool:
+        key = request.headers.get("x-api-key")
+        return bool(key) and any(secrets.compare_digest(key, k) for k in settings.api_keys)
+
+    def session_expiry(request: Request) -> int | None:
+        return session.verify(session_key, request.cookies.get(session.COOKIE_NAME))
+
+    def is_loopback(request: Request) -> bool:
+        return bool(request.client) and request.client.host in {"127.0.0.1", "::1", "testclient"}
+
     @app.middleware("http")
     async def private_api(request: Request, call_next):
         # UI routes include footage; protect them whenever API keys are configured.
+        # Scripts and the jury send X-API-Key; the browser interface logs in once
+        # with the same key and then sends the session cookie.
         # With no keys, permit loopback only (local demo). Never trust forwarded IP.
-        if request.url.path.startswith("/api/") and request.url.path not in {"/api/health", "/api/ready"}:
+        if request.url.path.startswith("/api/") and request.url.path not in OPEN_PATHS:
             if settings.api_keys:
-                key = request.headers.get("x-api-key")
-                if not key or not any(secrets.compare_digest(key, k) for k in settings.api_keys):
+                if header_key_ok(request):
+                    pass
+                elif session_expiry(request) is not None:
+                    if request.method not in SAFE_METHODS and request.headers.get(CSRF_HEADER) != CSRF_VALUE:
+                        return JSONResponse({"detail": "Missing X-Requested-With header"}, status_code=403)
+                else:
                     return JSONResponse({"detail": "Missing or invalid X-API-Key"}, status_code=401)
-            elif not request.client or request.client.host not in {"127.0.0.1", "::1", "testclient"}:
+            elif not is_loopback(request):
                 return JSONResponse({"detail": "Local access only; configure API_KEYS"}, status_code=403)
         if request.method == "POST":
             try:
@@ -237,7 +268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def jury_job(job_id: str, conn: Db) -> dict:
         return public_view(load_job(conn, job_id))
 
-    # ---------- interface API (no key: the interface has no login) ----------
+    # ---------- interface API (X-API-Key header or the login session cookie) ----------
 
     @app.post("/api/jobs")
     async def ui_upload(request: Request, file: Annotated[UploadFile, File()], conn: Db) -> dict:
@@ -281,6 +312,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"ok": True}
+
+    # ---------- browser sessions (interface login with the API key) ----------
+
+    @app.get("/api/session")
+    def session_status(request: Request):
+        if not settings.api_keys:
+            if is_loopback(request):
+                return {"authenticated": True, "method": "local"}
+            return JSONResponse({"detail": "Local access only; configure API_KEYS"}, status_code=403)
+        if header_key_ok(request):
+            return {"authenticated": True, "method": "header"}
+        if (exp := session_expiry(request)) is not None:
+            return {"authenticated": True, "method": "cookie", "expires_at": exp}
+        return JSONResponse({"detail": "Login required"}, status_code=401)
+
+    @app.post("/api/session")
+    def session_login(body: LoginBody, request: Request):
+        if not settings.api_keys:
+            raise HTTPException(400, "Login is not configured; set API_KEYS")
+        if not login_throttle.allow(request.client.host if request.client else "unknown"):
+            raise HTTPException(429, "Too many login attempts; try again later")
+        if not any(secrets.compare_digest(body.key, k) for k in settings.api_keys):
+            raise HTTPException(401, "Invalid key")
+        token, exp = session.issue(session_key, settings.session_hours)
+        response = JSONResponse({"authenticated": True, "method": "cookie", "expires_at": exp})
+        response.set_cookie(
+            session.COOKIE_NAME,
+            token,
+            max_age=int(settings.session_hours * 3600),
+            path="/api",
+            httponly=True,
+            samesite="strict",
+            secure=request.url.scheme == "https",
+        )
+        return response
+
+    @app.delete("/api/session", status_code=204)
+    def session_logout():
+        response = Response(status_code=204)
+        response.delete_cookie(session.COOKIE_NAME, path="/api", httponly=True, samesite="strict")
+        return response
 
     @app.get("/api/ready")
     def readiness(conn: Db):

@@ -42,6 +42,6 @@ def test_video_probe_sample_and_seek(video):
 def test_vocabulary_and_registry_are_consistent():
     book = Rulebook(REPO_ROOT / "rules")
     assert book.event("previous_client_cash_exposed").rule_ids == ("nbrk231_p20",)
-    # Everything ships unverified, so nothing is cited until someone checks it.
-    assert book.references(["nbrk231_p20"]) == []
-    assert Rulebook(REPO_ROOT / "rules", allow_unverified=True).references(["nbrk231_p20"])[0].verified is False
+    # Rules checked against the team's regulatory research are cited.
+    ref = book.references(["nbrk231_p20"])[0]
+    assert ref.verified and ref.provision == "п. 20" and ref.url.startswith("https://adilet.zan.kz/")
