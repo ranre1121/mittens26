@@ -29,3 +29,8 @@ npm-debug.log*
 !.env.example
 .dev.vars
 *.local
+
+# Preserved local artifacts from the pre-FastAPI checkout
+/.next/
+/.wrangler/
+/.open-next/

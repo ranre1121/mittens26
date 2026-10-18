@@ -1,23 +1,10 @@
-"use client";
-
+import type { Metadata } from "next";
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { JobView } from "@/components/JobView";
+import { JobFromQuery } from "@/components/JobFromQuery";
+import { JobLoading, ReviewShell } from "@/components/review/ReviewShell";
 
-// A static export can't pre-render one page per job, so the job id travels in
-// the query string: /jobs/?id=<job_id>.
-function JobFromQuery() {
-  const id = useSearchParams().get("id");
-  if (!id) {
-    return <p className="text-muted">Не указан идентификатор проверки.</p>;
-  }
-  return <JobView key={id} id={id} />;
-}
+export const metadata: Metadata = { title: "Проверка записи — Forte" };
 
 export default function JobPage() {
-  return (
-    <Suspense fallback={<p className="text-muted">Загрузка…</p>}>
-      <JobFromQuery />
-    </Suspense>
-  );
+  return <ReviewShell><Suspense fallback={<JobLoading />}><JobFromQuery /></Suspense></ReviewShell>;
 }

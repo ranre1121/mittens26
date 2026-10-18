@@ -106,9 +106,27 @@ The interface has no login, so these routes need no key.
 | Method | Path | |
 |---|---|---|
 | `POST` | `/api/jobs` | same upload as `/api/v1/analyze` |
+| `GET` | `/api/jobs?q=&status=all&page=1` | history, search, status filter, 20 records per page |
+| `GET` | `/api/jobs/activity?after=<cursor>` | completion announcements; omit cursor to start watching |
 | `GET` | `/api/jobs/{job_id}` | state, stage, progress, queue position, structured rules, evidence URLs |
 | `GET` | `/api/jobs/{job_id}/video` | uploaded video, supports Range requests |
 | `GET` | `/api/jobs/{job_id}/evidence/{name}` | evidence JPEG |
+
+### Forte interface
+
+The existing Forte upload, elastic border, particle transitions, metallic controls,
+history list/card switch and review dashboard live in `frontend/`. Pages are `/`,
+`/history/` and `/jobs/?id=<job_id>`; a `batch` query parameter links videos from
+one upload. The query route supports arbitrary job ids in the static export.
+
+The UI uses the FastAPI contract: `queued/running/done/failed` states, Unix-second
+job timestamps, evidence URLs and all structured rule references. History and
+completion feeds return display timestamps in milliseconds. Activity cursors are
+opaque: pass the returned cursor unchanged to the next request. Stub detector
+results remain visibly marked as demonstrations. The jury API is unchanged.
+
+The default upload limit is 500 MiB (MOV/MP4/M4V), as in the backend settings.
+The API remains authoritative if its configured limit is lower.
 
 ## Job lifecycle
 

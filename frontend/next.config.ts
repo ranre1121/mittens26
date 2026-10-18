@@ -10,14 +10,7 @@ export default function config(phase: string): NextConfig {
   const base: NextConfig = {
     // /jobs/ -> out/jobs/index.html, which FastAPI's StaticFiles serves as-is.
     trailingSlash: true,
-    turbopack: {
-      rules: {
-        "*.css": {
-          loaders: ["@tailwindcss/turbopack"],
-          as: "*.css",
-        },
-      },
-    },
+    images: { unoptimized: true },
   };
 
   if (phase === PHASE_DEVELOPMENT_SERVER) {

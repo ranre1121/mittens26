@@ -1,0 +1,16 @@
+.pagination { min-width: 0; }
+.pagination ul { display: flex; align-items: center; gap: .25rem; }
+.page, .direction { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-width: 2.75rem; min-height: 2.75rem; padding: .625rem; border-radius: 0; font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.page[aria-current='page'] { color: #f8f7fa; font-weight: 700; }
+.page[aria-current='page']::before { content: ""; position: absolute; left: .25rem; right: .25rem; bottom: 0; height: 3px; background: #bdabd0; }
+.direction svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+.page:focus-visible, .direction:focus-visible { outline: 2px solid #bdabd0; outline-offset: 3px; }
+.ellipsis { display: grid; place-items: center; min-width: 1.5rem; height: 2.75rem; color: #98929d; }
+
+@media (max-width: 600px) {
+  .direction > span, .edge, .ellipsis { display: none; }
+}
+
+
+.page { composes: surface from "./button-10.module.css"; }
+.direction { composes: surface from "./button-10.module.css"; }

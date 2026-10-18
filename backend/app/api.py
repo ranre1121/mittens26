@@ -17,9 +17,9 @@ import sqlite3
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Iterator
+from typing import Annotated, Iterator, Literal
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader
@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from app import jobs
 from app.config import Settings, load_settings
 from app.db import connect, init_db
+from app.history import list_completions, list_history
 from app.storage import Storage
 from app.video import InvalidVideo, probe
 
@@ -158,6 +159,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return base
         result = load_result(job)
         base["verdict"] = result["verdict"]
+        if result.get("pipeline", {}).get("detector", "").startswith("stub:"):
+            base["analysis"] = {
+                "is_demo": True,
+                "checked_types": [],
+                "limitations": ["Тестовый детектор не анализирует содержимое кадров. Результат не является проверкой кассовых операций."],
+            }
         base["violations"] = [
             {
                 "event_id": v["event_id"],
@@ -195,6 +202,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/jobs")
     async def ui_upload(request: Request, file: Annotated[UploadFile, File()], conn: Db) -> dict:
         return {"job_id": await accept_upload(request, file, conn)}
+
+    @app.get("/api/jobs")
+    def ui_history(
+        conn: Db,
+        q: Annotated[str, Query(max_length=120)] = "",
+        status: Literal["all", "queued", "processing", "done", "failed"] = "all",
+        page: Annotated[int, Query(ge=1, le=9999999)] = 1,
+    ):
+        return list_history(conn, q, status, page)
+
+    # Static path must precede /api/jobs/{job_id}.
+    @app.get("/api/jobs/activity")
+    def ui_activity(conn: Db, after: str | None = None):
+        try:
+            return list_completions(conn, after)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @app.get("/api/jobs/{job_id}")
     def ui_job(job_id: str, conn: Db) -> dict:
