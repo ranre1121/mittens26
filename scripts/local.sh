@@ -39,9 +39,12 @@ start() {
   launch api "$PY" -m uvicorn app.api:app --host 127.0.0.1 --port "$PORT" --proxy-headers
   launch worker "$PY" -m app.worker
   # HTTP/2 over TCP: many networks block the UDP that QUIC (the default) needs.
-  launch tunnel cloudflared tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$PORT"
+  if [ "${EXPOSE_TUNNEL:-false}" = "true" ]; then
+    [ -n "${API_KEYS:-}" ] || { echo "API_KEYS is required before exposing a tunnel"; exit 1; }
+    launch tunnel cloudflared tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$PORT"
 
-  for _ in $(seq 1 30); do [ -n "$(tunnel_url)" ] && break; sleep 1; done
+    for _ in $(seq 1 30); do [ -n "$(tunnel_url)" ] && break; sleep 1; done
+  fi
   status
 }
 

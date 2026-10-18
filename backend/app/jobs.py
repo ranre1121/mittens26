@@ -21,8 +21,14 @@ def new_job_id() -> str:
     return secrets.token_hex(6)
 
 
-def create_job(conn: sqlite3.Connection, job_id: str, filename: str, size: int, input_rel: str, duration: float) -> None:
-    with transaction(conn):
+class QueueFull(Exception):
+    pass
+
+
+def create_job(conn: sqlite3.Connection, job_id: str, filename: str, size: int, input_rel: str, duration: float, max_pending: int | None = None) -> None:
+    with transaction(conn, immediate=True):
+        if max_pending is not None and conn.execute("SELECT COUNT(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0] >= max_pending:
+            raise QueueFull()
         conn.execute(
             "INSERT INTO jobs (id, state, filename, size_bytes, input_path, duration_sec, created_at, stage)"
             " VALUES (?, 'queued', ?, ?, ?, ?, ?, 'queued')",
@@ -72,7 +78,8 @@ def complete(
     findings: list[Finding],
     pipeline_meta: dict,
 ) -> None:
-    verdict = "violation" if findings else "no_violation"
+    analysis = pipeline_meta.get("analysis", {})
+    verdict = analysis.get("rule_evaluation", {}).get("decision", "insufficient_evidence")
     result = {
         "job_id": job_id,
         "verdict": verdict,
@@ -84,6 +91,7 @@ def complete(
             "codec": info.codec,
         },
         "pipeline": pipeline_meta,
+        "analysis": analysis,
         "violations": [
             {
                 "event_id": f.event_id,
@@ -140,7 +148,7 @@ def complete(
         conn.execute(
             "UPDATE jobs SET state = 'done', verdict = ?, result_path = ?, finished_at = ?,"
             " stage = 'done', progress = 100, duration_sec = ? WHERE id = ?",
-            (verdict, storage.relative(result_path), time.time(), info.duration_sec, job_id),
+            (None, storage.relative(result_path), time.time(), info.duration_sec, job_id),
         )
 
 

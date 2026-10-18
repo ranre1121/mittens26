@@ -64,6 +64,7 @@ def env(make_settings):
     def _env(**overrides):
         settings = make_settings(**overrides)
         client = TestClient(create_app(settings))
+        client.headers["X-API-Key"] = API_KEY
         client.__enter__()  # run lifespan: create dirs and schema
         return client, Worker(settings), settings
 

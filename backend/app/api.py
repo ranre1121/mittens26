@@ -10,18 +10,20 @@ dependency aliases declared inside create_app() at definition time.
 """
 
 import base64
+import asyncio
 import json
 import re
 import secrets
 import sqlite3
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Iterator, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 
@@ -30,7 +32,9 @@ from app.config import Settings, load_settings
 from app.db import connect, init_db
 from app.history import list_completions, list_history
 from app.storage import Storage
-from app.video import InvalidVideo, probe
+from app.video import InvalidVideo, probe_bounded
+from app.pipeline.providers import capabilities
+from app.limits import UploadLimitMiddleware
 
 CHUNK = 1024 * 1024
 EVIDENCE_NAME = re.compile(r"^e\d+-[\d.]+\.jpg$")
@@ -39,6 +43,7 @@ EVIDENCE_NAME = re.compile(r"^e\d+-[\d.]+\.jpg$")
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     storage = Storage(settings.data_dir)
+    upload_slots = asyncio.Semaphore(2)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -64,9 +69,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     Db = Annotated[sqlite3.Connection, Depends(db)]
 
+    @app.middleware("http")
+    async def private_api(request: Request, call_next):
+        # UI routes include footage; protect them whenever API keys are configured.
+        # With no keys, permit loopback only (local demo). Never trust forwarded IP.
+        if request.url.path.startswith("/api/") and request.url.path not in {"/api/health", "/api/ready"}:
+            if settings.api_keys:
+                key = request.headers.get("x-api-key")
+                if not key or not any(secrets.compare_digest(key, k) for k in settings.api_keys):
+                    return JSONResponse({"detail": "Missing or invalid X-API-Key"}, status_code=401)
+            elif not request.client or request.client.host not in {"127.0.0.1", "::1", "testclient"}:
+                return JSONResponse({"detail": "Local access only; configure API_KEYS"}, status_code=403)
+        if request.method == "POST":
+            try:
+                declared = int(request.headers.get("content-length", "0"))
+                if declared < 0:
+                    raise ValueError()
+            except ValueError:
+                return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+            if declared > settings.max_upload_bytes + CHUNK:
+                return JSONResponse({"detail": "Upload too large"}, status_code=413)
+        return await call_next(request)
+
     # ---------- shared helpers ----------
 
     async def accept_upload(request: Request, file: UploadFile, conn: sqlite3.Connection) -> str:
+        if conn.execute("SELECT COUNT(*) FROM jobs WHERE state IN ('queued','running')").fetchone()[0] >= settings.max_pending_jobs:
+            raise HTTPException(429, "Inference queue is full")
+        if file.content_type not in {"video/mp4", "video/quicktime", "video/x-m4v", "application/octet-stream"}:
+            raise HTTPException(400, "Unsupported video media type")
         declared = int(request.headers.get("content-length") or 0)
         if declared > settings.max_upload_bytes + CHUNK:
             raise HTTPException(413, f"File is larger than {settings.max_upload_bytes // 2**20} MB")
@@ -89,13 +120,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if size == 0:
                 raise HTTPException(400, "File is empty")
             try:
-                info = await run_in_threadpool(probe, tmp_path)
+                async with upload_slots:
+                    info = await run_in_threadpool(probe_bounded, tmp_path)
             except InvalidVideo as exc:
                 raise HTTPException(400, f"Not a readable video: {exc}") from exc
 
+            if info.duration_sec > settings.max_video_seconds or info.width * info.height > settings.max_video_pixels:
+                raise HTTPException(400, "Video exceeds configured duration or pixel limits")
             job_id = jobs.new_job_id()
             final = storage.finalize_upload(tmp_path, job_id, ext)
-            jobs.create_job(conn, job_id, name, size, storage.relative(final), info.duration_sec)
+            try:
+                jobs.create_job(conn, job_id, name, size, storage.relative(final), info.duration_sec, settings.max_pending_jobs)
+            except jobs.QueueFull:
+                final.unlink(missing_ok=True)
+                final.parent.rmdir()
+                raise HTTPException(429, "Inference queue is full")
             return job_id
         finally:
             tmp_path.unlink(missing_ok=True)
@@ -117,7 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if job["state"] in ("queued", "running"):
             return {"job_id": job["id"], "status": "processing"}
         if job["state"] == "failed":
-            return {"job_id": job["id"], "status": "failed", "error": job["error"] or "Analysis failed"}
+            return {"job_id": job["id"], "status": "failed", "error": job["error"] or "Analysis failed", "models": capabilities(settings)}
         result = load_result(job)
         violations = []
         for v in result["violations"]:
@@ -136,7 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "evidence_frames": frames,
                 }
             )
-        return {"job_id": job["id"], "status": "done", "verdict": result["verdict"], "violations": violations}
+        return {"job_id": job["id"], "status": "done", "verdict": result["verdict"], "violations": violations, "analysis": result.get("analysis", {})}
 
     def ui_view(conn: sqlite3.Connection, job: sqlite3.Row) -> dict:
         """The interface needs more than the jury: stage, progress, structured
@@ -159,6 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return base
         result = load_result(job)
         base["verdict"] = result["verdict"]
+        base["analysis"] = result.get("analysis", {})
         if result.get("pipeline", {}).get("detector", "").startswith("stub:"):
             base["analysis"] = {
                 "is_demo": True,
@@ -242,11 +282,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True}
 
+    @app.get("/api/ready")
+    def readiness(conn: Db):
+        conn.execute("SELECT 1").fetchone()
+        try:
+            heartbeat = json.loads((settings.data_dir / "worker-status.json").read_text())
+            alive = time.time() - heartbeat["timestamp"] < max(10, settings.worker_poll_seconds * 3)
+            os_pid = heartbeat["pid"]
+            import os
+            os.kill(os_pid, 0)
+        except (OSError, ValueError, KeyError, TypeError):
+            alive = False
+        body = {"ready": alive, "models": capabilities(settings), "worker_available": alive}
+        return JSONResponse(body, status_code=200 if alive else 503)
+
+    @app.get("/api/v1/models", dependencies=[Depends(require_api_key)])
+    def models():
+        return capabilities(settings)
+
+    @app.get("/api/v1/jobs/{job_id}/results", dependencies=[Depends(require_api_key)])
+    def results(job_id: str, conn: Db):
+        job = load_job(conn, job_id)
+        if job["state"] != "done":
+            raise HTTPException(409, "Result is not available")
+        return load_result(job)
+
     # ---------- static frontend (Next.js export), mounted last ----------
 
     if settings.frontend_dir.is_dir():
         app.mount("/", StaticFiles(directory=settings.frontend_dir, html=True), name="frontend")
 
+    app.add_middleware(UploadLimitMiddleware, limit=settings.max_upload_bytes + CHUNK)
     return app
 
 

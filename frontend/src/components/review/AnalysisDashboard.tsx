@@ -36,12 +36,12 @@ export function AnalysisDashboard({ job, videoRef, onSeek, onZoom }: {
 
   return (
     <div className={styles.dashboard}>
-      {job.analysis?.is_demo && <div className={styles.demoNotice} role="note"><strong>Демонстрационный результат</strong><p>Создан тестовым обработчиком. Он не подтверждает работу модели и не предназначен для оценки действий кассира.</p></div>}
+      {(job.analysis?.is_demo || job.analysis?.is_mock) && <div className={styles.demoNotice} role="note"><strong>Демонстрационный результат</strong><p>Создан тестовым обработчиком. Он не подтверждает работу модели и не предназначен для оценки действий кассира.</p></div>}
       <div className={styles.board}>
         <section className={styles.summary} aria-labelledby="report-verdict">
           <div className={styles.summaryTop}><span className={styles.completion}><CheckIcon />Анализ завершён</span>{job.finished_at != null && <time dateTime={new Date(job.finished_at * 1000).toISOString()}>{finishedFormat.format(job.finished_at * 1000)} · Алматы</time>}</div>
-          <h2 id="report-verdict">{events.length ? "Обнаружены признаки возможных нарушений" : "Нарушение не обнаружено"}</h2>
-          <p>{events.length ? "Проверьте отмеченные фрагменты, наблюдаемые действия и основания каждого вывода." : "В пределах выполненной проверки визуальные признаки нарушений не найдены. Учитывайте ограничения записи."}</p>
+          <h2 id="report-verdict">{job.verdict === "insufficient_evidence" ? "Недостаточно доказательств для вывода" : events.length ? "Обнаружены признаки возможных нарушений" : "В пределах проверенного фрагмента события не отмечены"}</h2>
+          <p>{job.verdict === "insufficient_evidence" ? "Отсутствие событий не подтверждает соблюдение правил. Нужны проверенные действия, границы операций и непрерывность наблюдения." : events.length ? "Проверьте отмеченные фрагменты, наблюдаемые действия и основания каждого вывода." : "Учитывайте ограничения записи и выполненной проверки."}</p>
           <dl className={styles.metrics}>
             <div><dt>События</dt><dd>{String(events.length).padStart(2, "0")}</dd></div>
             <div><dt>Типы событий</dt><dd>{String(types.size).padStart(2, "0")}</dd></div>

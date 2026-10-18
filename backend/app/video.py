@@ -91,3 +91,37 @@ def frames_at(path: Path, timestamps: list[float]) -> list[tuple[float, Image.Im
             if chosen is not None:
                 out.append((float(chosen.time), chosen.to_image()))
     return out
+
+
+def _probe_child(path, sender):
+    try:
+        sender.send((True, probe(path)))
+    except Exception:
+        sender.send((False, None))
+    finally:
+        sender.close()
+
+
+def probe_bounded(path: Path, timeout: float = 10) -> VideoInfo:
+    import multiprocessing
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(target=_probe_child, args=(path, sender))
+    process.start()
+    sender.close()
+    try:
+        if not receiver.poll(timeout):
+            raise InvalidVideo("video probing timed out")
+        try:
+            valid, info = receiver.recv()
+        except EOFError:
+            raise InvalidVideo("video probing failed") from None
+        if not valid:
+            raise InvalidVideo("cannot decode video")
+        return info
+    finally:
+        receiver.close()
+        process.join(timeout=.1)
+        if process.is_alive():
+            process.kill()
+            process.join()

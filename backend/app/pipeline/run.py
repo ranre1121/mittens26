@@ -75,6 +75,9 @@ class Pipeline:
         info = probe(video_path)
 
         on_stage(Stage.DETECTING, 15)
+        if hasattr(self.detector, "analyze_video"):
+            findings = self.detector.analyze_video(video_path, info, sample(video_path, self.sample_fps), evidence_dir)
+            return info, findings
         candidates = self.detector.detect(info, sample(video_path, self.sample_fps))
         events = consolidate(candidates)
 

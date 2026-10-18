@@ -1,0 +1,918 @@
+{
+  "schema_version": "cashrules.catalog.v1",
+  "legal_as_of": "2026-10-18",
+  "video_operation_date_required_for_production": true,
+  "severity_definition": {
+    "severe": "Project priority for cash loss, unauthorized access/use, missing independent control or material records.",
+    "minor": "Project priority for personal-item, structural or package-label procedure review; not harmlessness or statutory grading."
+  },
+  "legal_retrieval_limitation": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+  "rules": [
+    {
+      "rule_id": "WF-MACHINE-ALL",
+      "title": "All cash lots complete machine counting before transaction deadline",
+      "basis": "user_workflow_policy",
+      "enabled": true,
+      "verification_status": "user_specified_not_statutory",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "machine_coverage",
+      "sources": [
+        {
+          "act": "User-specified Datathon workflow",
+          "paragraph": "all stacks must pass counting machine",
+          "url": null,
+          "verification_evidence": "Trusted user instruction delegated to this task; public legal equivalence not asserted."
+        }
+      ],
+      "applicability_assumptions": [
+        "Applies to the scoped transaction and cash-lot inventory.",
+        "Recounts never cover a different lot; partial feeds need explicit exhaustive lineage."
+      ],
+      "required_observable_events": [
+        "machine_loading",
+        "counting_activity",
+        "completion_evidence",
+        "cash_bypass"
+      ],
+      "required_context_facts": [
+        "machine_scope_complete"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "KZ-CASH-01",
+      "title": "Recount/sort operation without qualifying equipment",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "regulated_equipment",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "41"
+        }
+      ],
+      "applicability_assumptions": [
+        "Confirmed recount/sort operation, not merely manual handling or a visible pile.",
+        "Equipment must check at least two machine-readable security features; video alone cannot certify capability.",
+        "Prior processing, lot lineage, complete operation and camera coverage must be established."
+      ],
+      "required_observable_events": [
+        "machine_loading",
+        "counting_activity",
+        "completion_evidence",
+        "cash_bypass"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "regulated_recount_or_sort",
+        "equipment_inventory_verified",
+        "prior_processing_checked"
+      ],
+      "transaction_kinds": [
+        "back_office"
+      ],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-02",
+      "title": "Missing controlling employee during back-office processing",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "controller_absent",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "42"
+        }
+      ],
+      "applicability_assumptions": [
+        "Customer cash receipt/disbursement is excepted.",
+        "Controller role and complete room occupancy coverage must be externally established."
+      ],
+      "required_observable_events": [
+        "backoffice_process",
+        "controller_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "back_office_workflow_verified",
+        "staff_roles_verified"
+      ],
+      "transaction_kinds": [
+        "back_office"
+      ],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-03",
+      "title": "Unprotected device-loading cassette at transfer",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "cassette_unprotected",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "55"
+        }
+      ],
+      "applicability_assumptions": [
+        "Cassette preparation must be complete; an in-progress open cassette is not a violation.",
+        "Bank-selected seal type and lock state must be identifiable.",
+        "Revision 10.11.2025 №71 applies."
+      ],
+      "required_observable_events": [
+        "cassette_ready",
+        "cassette_transfer",
+        "cassette_unlocked or cassette_unsealed"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "device_loading_workflow_verified",
+        "cassette_type_verified",
+        "seal_method_known"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-04",
+      "title": "Unaccompanied vault/safe-room entry requiring escort",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "unescorted_vault_entry",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "75"
+        }
+      ],
+      "applicability_assumptions": [
+        "Cash-responsible persons may enter under the clause.",
+        "Other entrants need bank-head directive and responsible-person accompaniment.",
+        "This minimal predicate handles missing escort; missing directive alone is deferred to access-record reconciliation."
+      ],
+      "required_observable_events": [
+        "vault_entry",
+        "escort_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "vault_room_verified",
+        "staff_roles_verified",
+        "authorization_records_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-05",
+      "title": "Inter-cashier transfer missing required accounting record",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "15"
+        }
+      ],
+      "applicability_assumptions": [
+        "Records may be electronic or off-camera.",
+        "Required fields include date, identities/roles/signatures, amount and count/type."
+      ],
+      "required_observable_events": [
+        "cash_handover",
+        "authoritative missing/incomplete transfer record"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "transfer_workflow_verified",
+        "authoritative_record_search_complete"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "disabled_external_records_or_site_inspection_required"
+    },
+    {
+      "rule_id": "KZ-CASH-06",
+      "title": "Unauthorized use of protected stamp, seal, key or valuable",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "76, 80"
+        }
+      ],
+      "applicability_assumptions": [
+        "Desk presence alone is insufficient.",
+        "Use actual current internal storage/issue/transfer procedure; do not apply revoked blanket rules."
+      ],
+      "required_observable_events": [
+        "protected_item_use",
+        "authoritative authorization/custody conflict"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "internal_policy_verified",
+        "item_identity_verified",
+        "actor_authorization_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "disabled_external_records_or_site_inspection_required"
+    },
+    {
+      "rule_id": "KZ-CASH-07",
+      "title": "Personal belongings stored inside the cash node",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "minor",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "personal_item_in_cash_node",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "12"
+        }
+      ],
+      "applicability_assumptions": [
+        "Ownership and storage placement, rather than mere bank equipment presence, must be established.",
+        "Medicines, medical devices and communications devices without photo/video capability are permitted exceptions.",
+        "Revision 10.11.2025 №71 applies; no medical facts inferred."
+      ],
+      "required_observable_events": [
+        "personal_item_present"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "cash_node_boundary_verified",
+        "employee_role_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-08",
+      "title": "Acceptance of confirmed defective transport package",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "defective_transport_acceptance",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "112"
+        }
+      ],
+      "applicability_assumptions": [
+        "Applies to transport acceptance, not every ordinary bag opening.",
+        "Defect must be confirmed, persist through acceptance, with any repair/repacking excluded.",
+        "No inference about what a worker noticed."
+      ],
+      "required_observable_events": [
+        "transport_package_defect",
+        "transport_acceptance"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "transport_acceptance_workflow_verified",
+        "package_requirements_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-09",
+      "title": "Transport bag packed without sender present",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "sender_absent_during_packing",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "113"
+        }
+      ],
+      "applicability_assumptions": [
+        "Requires the specific transport-acceptance workflow.",
+        "Paragraph129 escort-only workflow does not imply contents accepted/packed by escorting workers.",
+        "Sender outside camera coverage is unknown, not absent."
+      ],
+      "required_observable_events": [
+        "transport_packing",
+        "sender_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "p112_113_transport_workflow_verified",
+        "sender_identity_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-10",
+      "title": "Missing pre-close vault reconciliation or discrepancy act",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "78–79"
+        }
+      ],
+      "applicability_assumptions": [
+        "Requires records and applicable internal procedure.",
+        "No visible check or signature is not proof that a digital reconciliation was omitted."
+      ],
+      "required_observable_events": [
+        "final_vault_closure",
+        "authoritative missing reconciliation/discrepancy act"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "operational_day_boundary_verified",
+        "accounting_records_complete"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "disabled_external_records_or_site_inspection_required"
+    },
+    {
+      "rule_id": "KZ-CASH-11",
+      "title": "Third-party access/view during collection loading",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "third_party_loading_exposure",
+      "sources": [
+        {
+          "act": "НБРК, постановление 24.02.2020 №14, регистрация №20075",
+          "url": "https://adilet.zan.kz/rus/docs/V2000020075",
+          "status_url": "https://adilet.zan.kz/rus/docs/V2000020075/info",
+          "consolidated_change_date": "2024-12-24",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "21"
+        }
+      ],
+      "applicability_assumptions": [
+        "Third-party status must be verified, never inferred from appearance.",
+        "Camera field of view does not establish a public sightline; view predicate needs verified sightline.",
+        "Paragraph21 revised19.12.2022 №125."
+      ],
+      "required_observable_events": [
+        "loading_activity",
+        "third_party_access or third_party_view"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "collection_loading_workflow_verified",
+        "loading_area_boundary_verified",
+        "authorization_roster_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "bounded_predicate_with_context_gates"
+    },
+    {
+      "rule_id": "KZ-CASH-12",
+      "title": "Required service/recount-room entrance lacks closure/lock",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "minor",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 24.02.2020 №14, регистрация №20075",
+          "url": "https://adilet.zan.kz/rus/docs/V2000020075",
+          "status_url": "https://adilet.zan.kz/rus/docs/V2000020075/info",
+          "consolidated_change_date": "2024-12-24",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "8; 19(1)"
+        }
+      ],
+      "applicability_assumptions": [
+        "Structural inspection rule; momentarily open door is insufficient.",
+        "Paragraph16 temporary replacement through01.01.2027 is not used by this predicate."
+      ],
+      "required_observable_events": [
+        "facility-inspection closure/lock defect"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "room_classification_verified",
+        "facility_inspection_verified"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "disabled_external_records_or_site_inspection_required"
+    },
+    {
+      "rule_id": "KZ-CASH-13",
+      "title": "Incomplete labels on a completed banknote package",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "minor",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal research forwarded by parent task on 2026-10-18: indexed official Adilet clause text plus official info/history. Direct current page JavaScript-only; legacy direct fetch timed out. Full official archive and compliance sign-off required before production.",
+          "paragraph": "46–47, 49–50"
+        }
+      ],
+      "applicability_assumptions": [
+        "CCTV usually lacks readable detail.",
+        "Apply paragraph49 leftover-note overall-band exception and category-specific paragraph50 rules."
+      ],
+      "required_observable_events": [
+        "completed_package",
+        "verified missing applicable label field"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "package_category_verified",
+        "readable_label_review_verified",
+        "exceptions_checked"
+      ],
+      "transaction_kinds": [],
+      "implementation_status": "disabled_external_records_or_site_inspection_required"
+    },
+    {
+      "rule_id": "KZ-CASH-15",
+      "title": "Leaving before customer service is complete",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "leave_during_service",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Parent-forwarded primary-source researcher verified current No.231 paragraph22: cashier may not leave workplace before completing customer service; indexed official Adilet plus status,2026-10-18.",
+          "paragraph": "22"
+        }
+      ],
+      "applicability_assumptions": [
+        "Confirmed active customer service and actual mapped workstation exit before completion.",
+        "Role and transaction/service boundary evidence required; leaving camera view alone is insufficient."
+      ],
+      "required_observable_events": [
+        "service_active",
+        "workstation_exit"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "service_episode_verified",
+        "authorized_handoff_excluded"
+      ],
+      "transaction_kinds": [
+        "receipt",
+        "issue"
+      ]
+    },
+    {
+      "rule_id": "DRAFT-231-20",
+      "title": "Receipt counting outside customer presence",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "draft_unverified_clause",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "customer_absent_during_count",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": null,
+          "verification_evidence": "Existing report candidate only; this exact clause not reverified in supplied current legal research.",
+          "paragraph": "19(2),20"
+        }
+      ],
+      "applicability_assumptions": [
+        "Draft retained for traceability only; exact current clause and applicability must be verified before activation."
+      ],
+      "required_observable_events": [
+        "cash_receipt",
+        "counting_activity",
+        "customer_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "workflow_and_roles_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "DRAFT-231-31",
+      "title": "Issue counting outside customer presence",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "draft_unverified_clause",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "customer_absent_during_count",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": null,
+          "verification_evidence": "Existing report candidate only; this exact clause not reverified in supplied current legal research.",
+          "paragraph": "31(4)"
+        }
+      ],
+      "applicability_assumptions": [
+        "Draft retained for traceability only; exact current clause and applicability must be verified before activation."
+      ],
+      "required_observable_events": [
+        "counting_activity",
+        "cash_issue",
+        "customer_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "workflow_and_roles_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "DRAFT-231-20-STORAGE",
+      "title": "Prior client cash exposed during later service",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "draft_unverified_clause",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "prior_cash_exposed",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": null,
+          "verification_evidence": "Existing report candidate only; this exact clause not reverified in supplied current legal research.",
+          "paragraph": "20"
+        }
+      ],
+      "applicability_assumptions": [
+        "Draft retained for traceability only; exact current clause and applicability must be verified before activation."
+      ],
+      "required_observable_events": [
+        "cash_exposed"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "workflow_and_roles_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "DRAFT-231-24",
+      "title": "Omitted collection bag physical inspection",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "draft_unverified_clause",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "bag_inspection_omitted",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": null,
+          "verification_evidence": "Existing report candidate only; this exact clause not reverified in supplied current legal research.",
+          "paragraph": "24"
+        }
+      ],
+      "applicability_assumptions": [
+        "Draft retained for traceability only; exact current clause and applicability must be verified before activation."
+      ],
+      "required_observable_events": [
+        "bag_inspection_omission",
+        "collection_bag_accepted"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "workflow_and_roles_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "DRAFT-231-25",
+      "title": "Damaged bag opened without required collector",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "draft_unverified_clause",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "damaged_bag_without_collector",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": null,
+          "verification_evidence": "Existing report candidate only; this exact clause not reverified in supplied current legal research.",
+          "paragraph": "25"
+        }
+      ],
+      "applicability_assumptions": [
+        "Draft retained for traceability only; exact current clause and applicability must be verified before activation."
+      ],
+      "required_observable_events": [
+        "bag_damage",
+        "bag_opening",
+        "collector_absent"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "workflow_and_roles_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "INTERNAL-IT-LOCK",
+      "title": "Unsecured workstation contrary to a supplied bank policy",
+      "basis": "internal_policy",
+      "enabled": false,
+      "verification_status": "policy_not_supplied",
+      "severity": "minor",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [],
+      "applicability_assumptions": [
+        "Open laptop lid or visible screen does not prove unlocked session.",
+        "Actual bank policy and session-lock telemetry required."
+      ],
+      "required_observable_events": [
+        "verified unlocked session after policy deadline"
+      ],
+      "required_context_facts": [
+        "internal_policy_verified"
+      ],
+      "transaction_kinds": []
+    },
+    {
+      "rule_id": "INTERNAL-UNATTENDED-ASSETS",
+      "title": "Protected asset physically accessible while all authorized custodians are absent",
+      "basis": "internal_policy",
+      "enabled": true,
+      "verification_status": "policy_not_supplied_observation_only",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "unattended_assets",
+      "sources": [
+        {
+          "act": "Applicable bank custody policy — not supplied",
+          "paragraph": "Item-specific custody requirement and duration, if any",
+          "url": null,
+          "verification_evidence": "User requested unattended-asset review. No universal statutory N-second deadline verified; policy-based candidates require a separately verified item policy."
+        }
+      ],
+      "applicability_assumptions": [
+        "Known item type and item-specific custody requirement are required. Unknown/personal bags are not assumed to contain cash.",
+        "All authorized custodians, not just the usual cashier, must be absent from the mapped custody area.",
+        "Missing person detections, an empty chair, camera blind spots and occlusion do not prove absence.",
+        "Laptop physical-custody observation does not prove an unlocked session.",
+        "Without verified bank policy, emit observational review with insufficient_evidence."
+      ],
+      "required_observable_events": [
+        "asset_present",
+        "authorized_custodians_absent",
+        "authorized_custodian_present"
+      ],
+      "required_context_facts": [
+        "workstation_boundary_verified",
+        "authorized_custodian_roster_verified"
+      ],
+      "transaction_kinds": [],
+      "duration_threshold_s": 0.0,
+      "threshold_basis": "Project observation parameter only; replace with actual item-specific bank policy threshold if supplied."
+    },
+    {
+      "rule_id": "WF-EXIT-DOOR-ASSETS",
+      "title": "Cashier exits while protected items remain and door is open or verified unlocked",
+      "basis": "user_workflow_policy",
+      "enabled": true,
+      "verification_status": "user_confirmed_project_security_rule_not_statutory",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "exit_door_assets",
+      "sources": [
+        {
+          "act": "User-confirmed project/bank-policy security condition",
+          "paragraph": "Confirmed room exit + protected items remain + open or independently verified unlocked door",
+          "url": null,
+          "verification_evidence": "Trusted delegated clarification: user explicitly confirmed this combined condition. No.14 structural closable/lockable-door provisions are not asserted to prohibit every transient open door."
+        }
+      ],
+      "applicability_assumptions": [
+        "Actual room threshold crossing, not merely leaving the frame.",
+        "Verified room, door map, protected item classification, custody requirement and policy applicability.",
+        "Another authorized custodian can satisfy custody; ordinary bags and unknown contents are not assumed cash.",
+        "Door closed does not imply locked; lock hidden or unknown means uncertainty.",
+        "All candidates are project security review, not automatic statutory violations."
+      ],
+      "required_observable_events": [
+        "room_exit",
+        "asset_present",
+        "authorized_custodians_absent",
+        "door_state"
+      ],
+      "required_context_facts": [
+        "room_boundary_verified",
+        "door_mapping_verified",
+        "authorized_custodian_roster_verified",
+        "exit_door_policy_applicable"
+      ],
+      "transaction_kinds": [],
+      "duration_threshold_s": 0.0,
+      "threshold_basis": "Project observation parameter; no statutory unattended interval."
+    },
+    {
+      "rule_id": "KZ-CASH-14",
+      "title": "Required visual/digital identification omitted during direct customer cash receipt",
+      "basis": "regulatory",
+      "enabled": true,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deposit_identity_verification",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Primary-source legal researcher verified current official indexed Adilet text and status on2026-10-18; cashier visually identifies depositing client against identity document OR identity data from digital-document service. Canonical current page JS-only; archive/signoff still required before production.",
+          "paragraph": "19(1)"
+        }
+      ],
+      "applicability_assumptions": [
+        "Current No.231 paragraph19(1): physical identity document OR digital-document-service identity data.",
+        "Receipt customer/representative/collector roles and transaction type must be resolved. This predicate covers depositing clients only; collector/sealed-bag obligation is separately deferred.",
+        "Records must be documented as exhaustive of physical, prior and electronic verification; no visible ID/document interaction alone never proves omission.",
+        "Pseudonymous customer/transaction IDs only; government ID numbers are unnecessary.",
+        "No blanket prior-KYC exemption was verified. A check earlier in the SAME receipt workflow can be evidence; do not require a physical card before touching a bag. Paragraph7 AML due diligence is a separate obligation."
+      ],
+      "required_observable_events": [
+        "cash_receipt",
+        "identity_verification_record_absent or identity_verification_confirmed"
+      ],
+      "required_context_facts": [
+        "regulated_entity_scope_verified",
+        "deposit_client_identity_obligation_verified",
+        "deposit_client_not_collector_verified",
+        "identification_records_complete",
+        "same_workflow_and_digital_checks_included",
+        "verification_records_are_exhaustive"
+      ],
+      "transaction_kinds": [
+        "receipt"
+      ]
+    },
+    {
+      "rule_id": "KZ-CASH-16",
+      "title": "Collector identity credentials and attendance card not established at sealed-bag pickup",
+      "basis": "regulatory",
+      "enabled": false,
+      "verification_status": "verified_primary_source",
+      "severity": "severe",
+      "severity_basis": "project_risk_priority_not_statutory",
+      "engine": "deferred",
+      "sources": [
+        {
+          "act": "НБРК, постановление 29.11.2019 №231, регистрация №19680",
+          "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+          "status_url": "https://adilet.zan.kz/rus/docs/V1900019680/info",
+          "consolidated_change_date": "2026-07-12",
+          "verified_at_utc": "2026-10-18",
+          "verification_evidence": "Parent-forwarded primary-source researcher verified collector receiving sealed bags from customer: collector identity document OR digital-document-service identity data and attendance card; power-of-attorney form in Appendix4,2026-10-18.",
+          "paragraph": "101(1); Appendix4"
+        }
+      ],
+      "applicability_assumptions": [
+        "This concerns COLLECTOR identity at customer sealed-bag pickup, not depositing customer identity.",
+        "Paragraph24 governs cashier receipt from collection department/company with accompanying document meetingparagraph106.",
+        "Requires verified workflow/roles and authoritative credential/attendance-card records; no visible card alone is insufficient."
+      ],
+      "required_observable_events": [
+        "bag or cash handover",
+        "authoritative verification evidence"
+      ],
+      "required_context_facts": [
+        "workflow_and_identity_obligation_verified"
+      ],
+      "transaction_kinds": []
+    }
+  ],
+  "excluded_claims": [
+    "No universal unattended-cash N-second threshold verified.",
+    "No blanket prohibition on any manual cash handling.",
+    "No automatic violation for notebook/stamp on desk, laptop lid open, momentary open door, phone use or drinking.",
+    "Revoked03.03.2001 №58 (V010001482_) and24.08.2012 №250 (V1200008080) must not supply active rules."
+  ],
+  "verified_operation_date_start": "2026-07-12"
+}

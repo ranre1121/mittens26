@@ -29,6 +29,7 @@ export type Violation = {
 
 export type AnalysisContext = {
   is_demo?: boolean;
+  is_mock?: boolean;
   checked_types?: string[];
   limitations?: string[];
   unassessed_segments?: { start_sec: number; end_sec: number; reason: string }[];
@@ -51,5 +52,5 @@ type JobMetadata = {
 export type JobView = JobMetadata & (
   | { state: "queued" | "running"; status: "processing"; error: null }
   | { state: "failed"; status: "failed"; error: string | null }
-  | { state: "done"; status: "done"; error: null; verdict: "violation" | "no_violation"; violations: Violation[] }
+  | { state: "done"; status: "done"; error: null; verdict: "violation" | "no_violation" | "insufficient_evidence" | "supported_violation_candidate" | "no_violation_observed"; violations: Violation[] }
 );

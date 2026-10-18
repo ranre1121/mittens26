@@ -72,16 +72,16 @@ def test_completion_cursor_skips_history_and_pages_equal_timestamps(env):
 
 
 def test_upload_worker_result_history_and_notification(env, video):
-    client, worker, _ = env(stub_mode="demo", allow_unverified_rules=True)
+    client, worker, _ = env()
     cursor = client.get("/api/jobs/activity").json()["cursor"]
-    job_id = upload(client, video, path="/api/jobs", headers={}).json()["job_id"]
+    job_id = upload(client, video, path="/api/jobs", headers={"X-API-Key": "test-key"}).json()["job_id"]
     queued = client.get(f"/api/jobs/{job_id}").json()
     assert queued["state"] == "queued" and queued["created_at"] > 1700000000
     assert worker.run_once()
     result = client.get(f"/api/jobs/{job_id}").json()
-    assert result["analysis"]["is_demo"] and result["analysis"]["limitations"]
-    assert result["violations"][0]["rules"][0]["verified"] is False
-    assert client.get(result["violations"][0]["evidence_frames"][0]["url"]).status_code == 200
+    assert result["analysis"]["is_mock"] and result["analysis"]["limitations"]
+    assert result["violations"] == [] and result["verdict"] == "insufficient_evidence"
+    assert result["analysis"]["rule_evaluation"]["decision"] == "insufficient_evidence"
     item = client.get("/api/jobs?status=done").json()["items"][0]
     assert item["id"] == job_id and item["violationCount"] == len(result["violations"])
     assert item["createdAt"] == round(result["created_at"] * 1000)
