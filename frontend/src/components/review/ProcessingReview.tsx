@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { JobView } from "@/lib/types";
 import { formatBytes } from "@/lib/format";
 import { CheckIcon, RecordIcon } from "@/components/review/ReviewShell";
+import { ForteRunner } from "@/components/review/ForteRunner";
 import styles from "@/components/review/processing.module.css";
 
 const dateFormat = new Intl.DateTimeFormat("ru-RU", {
@@ -18,6 +19,8 @@ export function ProcessingReview({ job, videoRef }: {
   const progress = Number.isFinite(job.progress) ? Math.round(Math.max(0, Math.min(100, job.progress))) : 0;
 
   return (
+    <>
+    <ForteRunner />
     <div className={styles.board}>
       <section className={styles.recording} aria-labelledby="source-video-title">
         <header className={styles.recordingHeader}>
@@ -71,5 +74,6 @@ export function ProcessingReview({ job, videoRef }: {
         <div><dt>Размер записи</dt><dd>{formatBytes(job.size_bytes)}</dd></div>
       </dl>
     </div>
+    </>
   );
 }
