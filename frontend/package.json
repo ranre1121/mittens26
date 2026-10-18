@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:runner": "node --test tests/forte-run.test.mjs"
   },
   "dependencies": {
     "next": "16.4.2",
