@@ -20,9 +20,12 @@ WORKDIR /app/backend
 COPY backend/pyproject.toml ./
 COPY backend/app ./app
 RUN pip install --no-cache-dir .
+COPY backend/start.sh ./start.sh
 COPY rules /app/rules
 COPY --from=frontend /frontend/out /app/frontend/out
 RUN mkdir -p /data /models
 
 EXPOSE 8000
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Default: API + worker in one container (Cloudflare). docker-compose.yml
+# overrides the command to run them as two services.
+CMD ["./start.sh"]

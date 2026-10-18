@@ -1,0 +1,14 @@
+[project]
+name = "kassa-control-worker"
+version = "0.1.0"
+description = "FastAPI on a Cloudflare Python Worker: interface + jury API, D1 jobs, R2 videos. No analysis."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+]
+
+[dependency-groups]
+dev = [
+    "workers-py",
+    "workers-runtime-sdk",
+]

@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Same Worker as the original deployment, so the URL and the API_KEYS
+  // secret stay: https://datathon26.pognar1121.workers.dev
+  "name": "datathon26",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "containers": [
+    {
+      "class_name": "App",
+      // The repo-root Dockerfile: FastAPI + analysis worker + static frontend.
+      "image": "../Dockerfile",
+      "image_build_context": "..",
+      // ARCHITECTURE.md: a single host. One instance holds the SQLite file and media.
+      "max_instances": 1,
+      // CPU only on Cloudflare. Raise to standard-3/4 once the model is integrated.
+      "instance_type": "standard-1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "APP", "class_name": "App" }]
+  },
+  // v1/v2 were recorded by an earlier failed deploy and its rollback; keep them.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["App"] },
+    { "tag": "v2", "deleted_classes": ["App"] },
+    { "tag": "v3", "new_sqlite_classes": ["App"] }
+  ]
+}

@@ -10,7 +10,9 @@ import { UploadCompletionMark } from "@/components/UploadCompletionMark";
 import { UploadPageTransition } from "@/components/UploadPageTransition";
 import { jobHref } from "@/lib/job-links";
 
-const MAX_BYTES = 500 * 1024 * 1024;
+// Set at build time: 95 on Cloudflare Workers (100 MB request limit), 500 self-hosted.
+const MAX_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 500);
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 const ACCEPT = ".mov,.mp4,.m4v,video/quicktime,video/mp4";
 // File drags are tracked just outside the panel so the outline can meet them.
 const ATTRACTION_DISTANCE = 84;
@@ -149,7 +151,7 @@ export function FileUploader() {
       setEntries((current) => [...current, ...valid]);
       setAdditionWave({ id: valid[valid.length - 1].id, count: valid.length, complete: false });
     }
-    setError(rejected ? `${rejected} файл(ов) не добавлено. Допускаются непустые .mov, .mp4 и .m4v до 500 МБ.` : null);
+    setError(rejected ? `${rejected} файл(ов) не добавлено. Допускаются непустые .mov, .mp4 и .m4v до ${MAX_MB} МБ.` : null);
   }, []);
 
   useEffect(() => {
@@ -405,7 +407,7 @@ export function FileUploader() {
               <span ref={artworkRef} className="upload-artwork-wrap"><UploadArtwork count={entries.length} /></span>
               <span className="upload-dropzone-title">{dragging ? "Отпустите, чтобы добавить" : "Перетащите видео сюда"}</span>
               <span className={`upload-browse ${metallic.button}`}>Выбрать файлы</span>
-              <span id="upload-formats" className="upload-formats">MOV, MP4, M4V · до 500 МБ на файл</span>
+              <span id="upload-formats" className="upload-formats">MOV, MP4, M4V · до {MAX_MB} МБ на файл</span>
             </span>
           </button>
           {showingAddition && additionWave && (

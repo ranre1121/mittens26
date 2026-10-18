@@ -1,0 +1,17 @@
+{
+  "name": "datathon26-cloudflare",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261016.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.151.1"
+  }
+}

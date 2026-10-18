@@ -14,6 +14,7 @@ x-app: &app
 services:
   api:
     <<: *app
+    command: ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
     ports:
       - "8000:8000"
 

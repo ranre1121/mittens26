@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Same Worker as before: same URL, and the API_KEYS secret carries over.
+  "name": "datathon26",
+  "main": "src/main.py",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["python_workers"],
+  "observability": { "enabled": true },
+  // The Next.js static export. Only /api/* reaches Python; pages are served as files.
+  "assets": {
+    "directory": "../frontend/out",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "datathon26-db",
+      "database_id": "227631a0-b4be-4b78-a2e9-4d57173906b6",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "datathon26-videos" }],
+  "vars": {
+    // Workers reject request bodies over 100 MB.
+    "MAX_UPLOAD_MB": "95"
+  }
+}
