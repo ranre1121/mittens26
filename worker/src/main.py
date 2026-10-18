@@ -76,9 +76,16 @@ async def remote_request(url, *, method, body, headers, timeout_ms, binary):
     response = await js_fetch(url, js_obj(options))
     if not response.ok:
         raise RemoteError(f"Inference service HTTP {int(response.status)}")
+    limit = 2 * 1024 * 1024 if binary else 8 * 1024 * 1024
+    if int(response.headers.get("content-length") or 0) > limit:
+        raise RemoteError("Inference service response exceeds its size limit")
     if binary:
-        return (await response.arrayBuffer()).to_bytes()
-    return json.loads(await response.text())
+        content = (await response.arrayBuffer()).to_bytes()
+    else:
+        content = str(await response.text())
+    if len(content) > limit:
+        raise RemoteError("Inference service response exceeds its size limit")
+    return content if binary else json.loads(content)
 
 
 def remote_client(env):
@@ -91,13 +98,13 @@ async def refresh_job(env, job):
     if job["state"] not in ("queued", "running") or not job.get("remote_job_id"):
         return job
     if time.time() - job["created_at"] > 3600:
-        await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote inference deadline exceeded', finished_at=? WHERE id=?").bind(time.time(), job["id"]).run()
+        await env.DB.prepare("UPDATE jobs SET state='failed', stage='failed', error='Remote inference deadline exceeded', finished_at=? WHERE id=? AND state IN ('queued','running')").bind(time.time(), job["id"]).run()
         return await d1_first(env, "SELECT * FROM jobs WHERE id=?", job["id"])
     remote = remote_client(env)
     try:
         status = await remote.status(job["remote_job_id"])
         if status["status"] == "failed":
-            await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote inference failed', finished_at=? WHERE id=?").bind(time.time(), job["id"]).run()
+            await env.DB.prepare("UPDATE jobs SET state='failed', stage='failed', error='Remote inference failed', finished_at=? WHERE id=? AND state IN ('queued','running')").bind(time.time(), job["id"]).run()
         elif status["status"] == "done":
             result = await remote.results(job["remote_job_id"])
             for event in result["violations"]:
@@ -116,7 +123,7 @@ async def refresh_job(env, job):
             # Existing D1 verdict enum cannot express candidate/insufficient decisions; preserve it in R2.
             verdict = result.get("verdict")
             stored_verdict = verdict if verdict in ("violation", "no_violation") else None
-            await env.DB.prepare("UPDATE jobs SET state='done', stage='done', progress=100, result_path=?, verdict=?, finished_at=? WHERE id=?").bind(key, stored_verdict, time.time(), job["id"]).run()
+            await env.DB.prepare("UPDATE jobs SET state='done', stage='done', progress=100, result_path=?, verdict=?, duration_sec=?, finished_at=? WHERE id=? AND state IN ('queued','running')").bind(key, stored_verdict, result.get("video", {}).get("duration_sec"), time.time(), job["id"]).run()
     except Exception:
         # Poll failures are retryable and never converted to successful analysis.
         raise HTTPException(502, "Inference service temporarily unavailable")
@@ -144,7 +151,12 @@ async def handle_upload(js_req, env, needs_key: bool):
         return await reject(js_req, {"detail": "Inference service is not configured"}, 503)
 
     limit = max_upload_bytes(env)
-    declared = int(js_req.headers.get("content-length") or 0)
+    try:
+        declared = int(js_req.headers.get("content-length") or 0)
+        if declared < 0:
+            raise ValueError()
+    except (TypeError, ValueError):
+        return await reject(js_req, {"detail": "Invalid Content-Length"}, 400)
     if declared > limit + 1024 * 1024:
         return await reject(js_req, {"detail": f"File is larger than {limit // 2**20} MB"}, 413)
 
@@ -180,9 +192,9 @@ async def handle_upload(js_req, env, needs_key: bool):
     ).bind(job_id, name, size, key, time.time()).run()
     try:
         remote_id = await remote.submit(form)
-        await env.DB.prepare("UPDATE jobs SET remote_job_id=?, state='running', stage='remote_inference' WHERE id=?").bind(remote_id, job_id).run()
+        await env.DB.prepare("UPDATE jobs SET remote_job_id=?, state='running', stage='remote_inference', started_at=? WHERE id=?").bind(remote_id, time.time(), job_id).run()
     except Exception:
-        await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote submission failed or timed out; outcome unknown', finished_at=? WHERE id=?").bind(time.time(), job_id).run()
+        await env.DB.prepare("UPDATE jobs SET state='failed', stage='failed', error='Remote submission failed or timed out; outcome unknown', finished_at=? WHERE id=?").bind(time.time(), job_id).run()
         return js_json({"job_id": job_id, "detail": "Remote submission failed; no automatic retry"}, 502)
     return js_json({"job_id": job_id}, 202)
 
@@ -256,6 +268,28 @@ async def health(request: Request):
         configured = False
     return {"ok": True, "analysis": "remote", "remote_configured": configured,
             "live_service_verified": False}
+
+
+@app.get("/api/ready")
+async def ready(request: Request):
+    try:
+        env = env_of(request)
+        await d1_first(env, "SELECT 1 AS available")
+        readiness = await remote_client(env).ready()
+    except Exception:
+        return JSONResponse({"ready": False, "remote_available": False}, status_code=503)
+    return JSONResponse({**readiness, "remote_available": True}, status_code=200 if readiness["ready"] else 503)
+
+
+@app.get("/api/v1/models")
+async def models(request: Request, x_api_key: str | None = Header(default=None)):
+    env = env_of(request)
+    if not api_key_ok(env, x_api_key):
+        raise HTTPException(401, "Missing or invalid X-API-Key")
+    try:
+        return await remote_client(env).models()
+    except Exception:
+        raise HTTPException(502, "Inference model status temporarily unavailable")
 
 
 @app.get("/api/v1/jobs/{job_id}/results")

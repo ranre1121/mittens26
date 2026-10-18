@@ -55,13 +55,44 @@ class Settings:
     max_pending_jobs: int = 20
     yolo_config: Path | None = None
     yolo_device: str = "cpu"
+    qwen_model_dir: Path | None = None
+    qwen_model_revision: str = "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b"
+    qwen_quantization: str = "bf16"
+    qwen_adapter_dir: Path | None = None
+    qwen_allow_experimental_adapter: bool = False
+    qwen_max_new_tokens: int = 1024
+    qwen_max_input_tokens: int = 8192
+    qwen_max_windows: int = 8
+    qwen_window_seconds: float = 6
+    qwen_stride_seconds: float = 4
+    qwen_max_frames_per_window: int = 6
+    qwen_generation_timeout_seconds: float = 90
 
     def __post_init__(self):
         import math
         if self.yolo_device not in {"cpu", "cuda", "cuda:0"}:
             raise ValueError("YOLO_DEVICE must be cpu, cuda or cuda:0")
-        if self.qwen_provider not in {"mock", "command"}:
-            raise ValueError("QWEN_PROVIDER must be mock or command")
+        if self.qwen_provider not in {"mock", "command", "qwen3_local"}:
+            raise ValueError("QWEN_PROVIDER must be mock, command or qwen3_local")
+        if self.qwen_provider == "qwen3_local":
+            if self.qwen_model_id != "Qwen/Qwen3-VL-8B-Instruct":
+                raise ValueError("Qwen3 local provider requires Qwen/Qwen3-VL-8B-Instruct")
+            if self.qwen_model_dir is None or not self.qwen_model_dir.is_dir():
+                raise ValueError("QWEN_MODEL_DIR must be an existing local model directory")
+            if self.qwen_model_revision != "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b":
+                raise ValueError("Unsupported Qwen3 model revision")
+            if self.qwen_quantization not in {"bf16", "nf4"}:
+                raise ValueError("QWEN_QUANTIZATION must be bf16 or nf4")
+            if self.qwen_adapter_dir and not self.qwen_allow_experimental_adapter:
+                raise ValueError("LoRA requires QWEN_ALLOW_EXPERIMENTAL_ADAPTER=true")
+            for value, lo, hi in ((self.qwen_max_windows, 1, 128), (self.qwen_max_frames_per_window, 2, 8),
+                                  (self.qwen_max_new_tokens, 64, 1024), (self.qwen_max_input_tokens, 256, 8192)):
+                if type(value) is not int or not lo <= value <= hi:
+                    raise ValueError("Invalid Qwen window/token limit")
+            for value, hi in ((self.qwen_window_seconds, 30), (self.qwen_stride_seconds, 30),
+                              (self.qwen_generation_timeout_seconds, 300)):
+                if not math.isfinite(value) or not 0 < value <= hi:
+                    raise ValueError("Invalid Qwen time limit")
         if self.environment not in {"development", "production", "test"}:
             raise ValueError("APP_ENV must be development, test or production")
         if any(not isinstance(x, str) or not x for x in self.qwen_command):
@@ -88,14 +119,28 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    provider = os.environ.get("QWEN_PROVIDER", "mock")
+    local_qwen = provider == "qwen3_local"
     return Settings(
         yolo_device=os.environ.get("YOLO_DEVICE", "cpu"),
-        qwen_provider=os.environ.get("QWEN_PROVIDER", "mock"),
+        qwen_provider=provider,
         qwen_command=tuple(json.loads(os.environ.get("QWEN_COMMAND_JSON", "[]"))),
-        qwen_model_id=os.environ.get("QWEN_MODEL_ID", "qwen-stub"),
-        qwen_model_version=os.environ.get("QWEN_MODEL_VERSION", "mock-v1"),
+        qwen_model_id=os.environ.get("QWEN_MODEL_ID", "Qwen/Qwen3-VL-8B-Instruct" if local_qwen else "qwen-stub"),
+        qwen_model_version=os.environ.get("QWEN_MODEL_VERSION", "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b" if local_qwen else "mock-v1"),
+        qwen_model_dir=Path(os.environ["QWEN_MODEL_DIR"]).resolve() if os.environ.get("QWEN_MODEL_DIR") else None,
+        qwen_model_revision=os.environ.get("QWEN_MODEL_REVISION", "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b"),
+        qwen_quantization=os.environ.get("QWEN_QUANTIZATION", "bf16"),
+        qwen_adapter_dir=Path(os.environ["QWEN_ADAPTER_DIR"]).resolve() if os.environ.get("QWEN_ADAPTER_DIR") else None,
+        qwen_allow_experimental_adapter=os.environ.get("QWEN_ALLOW_EXPERIMENTAL_ADAPTER", "false").lower() == "true",
+        qwen_max_windows=int(os.environ.get("QWEN_MAX_WINDOWS", "8")),
+        qwen_max_frames_per_window=int(os.environ.get("QWEN_MAX_FRAMES_PER_WINDOW", "6")),
+        qwen_max_new_tokens=int(os.environ.get("QWEN_MAX_NEW_TOKENS", "1024")),
+        qwen_max_input_tokens=int(os.environ.get("QWEN_MAX_INPUT_TOKENS", "8192")),
+        qwen_window_seconds=float(os.environ.get("QWEN_WINDOW_SECONDS", "6")),
+        qwen_stride_seconds=float(os.environ.get("QWEN_STRIDE_SECONDS", "4")),
+        qwen_generation_timeout_seconds=float(os.environ.get("QWEN_GENERATION_TIMEOUT_SECONDS", "90")),
         environment=os.environ.get("APP_ENV", "development"),
-        job_timeout_seconds=float(os.environ.get("JOB_TIMEOUT_SECONDS", "120")),
+        job_timeout_seconds=float(os.environ.get("JOB_TIMEOUT_SECONDS", "600" if local_qwen else "120")),
         max_video_seconds=float(os.environ.get("MAX_VIDEO_SECONDS", "1800")),
         max_pending_jobs=int(os.environ.get("MAX_PENDING_JOBS", "20")),
         yolo_config=Path(os.environ["YOLO_CONFIG"]).resolve() if os.environ.get("YOLO_CONFIG") else None,

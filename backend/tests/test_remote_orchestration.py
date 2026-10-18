@@ -89,6 +89,7 @@ def test_poll_persist_and_lazy_observation_evidence(edge, monkeypatch):
             return {'status': 'done'}
         async def results(self, job):
             return {'verdict': 'insufficient_evidence', 'violations': [],
+                    'video': {'duration_sec': 7.25},
                     'analysis': {'is_mock': True, 'frames': [{'frame_ref': 'e0-0001.000.jpg', 'timestamp_s': 1}]}}
         async def evidence(self, job, name):
             evidence_calls.append((job, name))
@@ -98,6 +99,7 @@ def test_poll_persist_and_lazy_observation_evidence(edge, monkeypatch):
         job = await edge.load_job(env, ident)
         assert job['state'] == 'done'
         assert job['verdict'] is None
+        assert job['duration_sec'] == 7.25
         result = await edge.load_result(env, job)
         assert result['verdict'] == 'insufficient_evidence'
         assert result['analysis']['is_mock'] is True
@@ -122,3 +124,51 @@ def test_remote_deadline_marks_job_failed(edge, monkeypatch):
     job = asyncio.run(edge.load_job(env, ident))
     assert job['state'] == 'failed'
     assert job['error'] == 'Remote inference deadline exceeded'
+
+
+def test_stale_poll_cannot_regress_completed_job(edge, monkeypatch):
+    env = SimpleNamespace(DB=D1(), MEDIA=R2())
+    ident = 'abcdef123456'
+    env.DB.conn.execute("INSERT INTO jobs(id,state,filename,size_bytes,input_path,created_at,remote_job_id) VALUES(?,?,?,?,?,?,?)",
+                        (ident, 'running', 'clip.mp4', 100, 'uploads/input.mp4', time.time(), '123456abcdef'))
+    stale = dict(env.DB.conn.execute('SELECT * FROM jobs').fetchone())
+    env.DB.conn.execute("UPDATE jobs SET state='done',finished_at=123 WHERE id=?", (ident,))
+    class Remote:
+        async def status(self, job):
+            return {'status': 'failed'}
+    monkeypatch.setattr(edge, 'remote_client', lambda _: Remote())
+    result = asyncio.run(edge.refresh_job(env, stale))
+    assert result['state'] == 'done'
+    assert result['finished_at'] == 123
+
+
+def test_readiness_checks_remote_and_does_not_invent_model_success(edge, monkeypatch):
+    env = SimpleNamespace(DB=D1(), MEDIA=R2())
+    request = SimpleNamespace(scope={'env': env})
+    class Remote:
+        async def ready(self):
+            return {'ready': True, 'models': {'status': 'configured_requires_runtime_verification'}}
+    monkeypatch.setattr(edge, 'remote_client', lambda _: Remote())
+    response = asyncio.run(edge.ready(request))
+    assert response.status_code == 200
+    assert json.loads(response.body)['models']['status'] == 'configured_requires_runtime_verification'
+    class FailedRemote:
+        async def ready(self):
+            raise TimeoutError()
+    monkeypatch.setattr(edge, 'remote_client', lambda _: FailedRemote())
+    response = asyncio.run(edge.ready(request))
+    assert response.status_code == 503
+    assert json.loads(response.body) == {'ready': False, 'remote_available': False}
+
+
+def test_model_status_requires_authentication(edge, monkeypatch):
+    env = SimpleNamespace(API_KEYS='valid-key')
+    request = SimpleNamespace(scope={'env': env})
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(edge.models(request, None))
+    assert error.value.status_code == 401
+    class Remote:
+        async def models(self):
+            return {'model_id': 'Qwen/Qwen3-VL-8B-Instruct', 'is_mock': False}
+    monkeypatch.setattr(edge, 'remote_client', lambda _: Remote())
+    assert asyncio.run(edge.models(request, 'valid-key'))['is_mock'] is False

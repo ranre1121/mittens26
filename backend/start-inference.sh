@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${INFERENCE_API_KEY:?Configure the existing shared inference API secret}"
+export APP_ENV="${APP_ENV:-production}"
+export QWEN_PROVIDER="${QWEN_PROVIDER:-qwen3_local}"
+if [[ "$QWEN_PROVIDER" == qwen3_local ]]; then
+  : "${QWEN_MODEL_DIR:?Mount the verified official Qwen3-VL-8B-Instruct model cache}"
+  : "${YOLO_CONFIG:?Configure the accepted detector ensemble manifest}"
+fi
 export API_KEYS="$INFERENCE_API_KEY"
 export YOLO_DEVICE="${YOLO_DEVICE:-cuda:0}"
 python -m app.worker &

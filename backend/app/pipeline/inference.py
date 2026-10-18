@@ -4,6 +4,7 @@ from pathlib import Path
 from app.cashrules import evaluate
 from app.cashrules.contracts import Sequence
 from app.pipeline.providers import QwenProvider, capabilities, file_hash
+from app.pipeline.tracks import VisualHypotheses
 
 
 class InferenceDetector:
@@ -23,6 +24,7 @@ class InferenceDetector:
             from app.pipeline.yolo import YoloAdapter
             detector = YoloAdapter(settings.yolo_config, settings.yolo_device)
         frames = []
+        hypotheses = VisualHypotheses()
         # Bounded samples; JPEGs are private and served only through authenticated routes.
         for n, (ts, image) in enumerate(samples):
             if n >= 3600:
@@ -30,15 +32,25 @@ class InferenceDetector:
             target = evidence_dir / f'e0-{ts:08.3f}.jpg'
             image.thumbnail((960, 960))
             image.convert('RGB').save(target, 'JPEG', quality=80)
+            detections = detector.detect(image) if detector else []
             frames.append({'frame_ref': target.name, 'timestamp_s': ts,
                            'path': str(target.resolve()),
-                           'detections': detector.detect(image) if detector else []})
+                           'detections': detections, 'objects': hypotheses.update(ts, detections)})
         if not frames:
             raise ValueError('No timestamped frames decoded')
         digest = file_hash(path)
         request = {'schema_version': 'datathon.qwen.request.v1', 'video_path': str(path.resolve()),
                    'video_sha256': digest, 'duration_sec': info.duration_sec, 'frames': frames,
+                   'source_start_s': info.source_start_s,
                    'equipment_context_enabled': False}
+        yolo_provenance = detector.provenance if detector else None
+        if detector is not None:
+            detector = None
+            import gc
+            gc.collect()
+            if settings.yolo_device.startswith('cuda'):
+                import torch
+                torch.cuda.empty_cache()
         response = self.provider.infer(request)
         sequence = {'schema_version': 'cashrules.sequence.v1', 'synthetic': False, 'video_sha256': digest,
                     'events': [], 'evidence': [], 'transactions': [], 'coverage': [], 'facts': []}
@@ -55,8 +67,13 @@ class InferenceDetector:
         self.last_analysis = {'models': capabilities(settings), 'is_mock': response['is_mock'],
             'limitations': response['limitations'], 'rule_evaluation': rules, 'events': sequence['events'],
             'evidence': sequence['evidence'], 'video_sha256': digest,
-            'frames': [{k: v for k, v in f.items() if k != 'path'} for f in frames],
-            'yolo_provenance': detector.provenance if detector else None,
+            'source_start_s': info.source_start_s, 'timestamp_basis': 'source_presentation_time',
+            'frames': [{'frame_ref': f['frame_ref'], 'timestamp_s': f['timestamp_s']} for f in frames],
+            'yolo_provenance': yolo_provenance,
+            'qwen_provenance': response.get('provenance'),
+            'qwen_windows': response.get('windows', []),
             'annotated_output': None}
+        if response.get('provenance', {}).get('actual_inference') is True:
+            self.last_analysis['models']['status'] = 'inference_completed'
         # Only reviewed rule candidates belong in legacy violation findings.
         return []

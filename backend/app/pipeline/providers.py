@@ -1,4 +1,4 @@
-"""Explicit stub or operator-configured local Qwen process. No weight deserialization.
+"""Explicit stub, verified Qwen3 runtime, or operator-configured local process.
 
 Command contract: one request JSON on stdin; one response JSON on stdout.
 The operator owns the executable/runtime. No shell, auto-download or fallback.
@@ -30,6 +30,8 @@ def capabilities(settings):
         'semantic_accuracy_validated': False, 'equipment_context_enabled': False,
         'yolo': 'configured' if settings.yolo_config else 'disabled',
         'yolo_device': settings.yolo_device,
+        'qwen_quantization': settings.qwen_quantization if settings.qwen_provider == 'qwen3_local' else None,
+        'experimental_adapter_enabled': bool(settings.qwen_adapter_dir) if settings.qwen_provider == 'qwen3_local' else False,
         'rules': 'cashrules.sequence.v1; candidate evidence cannot self-confirm',
     }
 
@@ -42,6 +44,9 @@ class QwenProvider:
         cfg = self.settings
         if cfg.qwen_provider == 'mock':
             return {'events': [], 'is_mock': True, 'limitations': ['Stub provider: no Qwen weights loaded; no semantic evidence produced.']}
+        if cfg.qwen_provider == 'qwen3_local':
+            from app.pipeline.qwen_runtime import infer
+            return infer(request, cfg)
         # Temporary files bound memory even if a broken executable floods stdout.
         with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
             import sys
@@ -72,7 +77,8 @@ class QwenProvider:
             if not isinstance(entities, list) or not entities or any(not isinstance(x, str) or not x.strip() or len(x) > 100 for x in entities) or len(set(entities)) != len(entities):
                 raise ValueError('Explicit pseudonymous subject/object hypotheses required')
             a, b = event['start_s'], event['end_s']
-            if any(type(x) not in (int, float) or not math.isfinite(x) for x in (a, b)) or not 0 <= a <= b <= request['duration_sec']:
+            origin = request.get('source_start_s', 0)
+            if any(type(x) not in (int, float) or not math.isfinite(x) for x in (a, b)) or not origin <= a <= b <= origin + request['duration_sec']:
                 raise ValueError('Invalid event interval')
             if event['event_type'] not in EVENT_TYPES:
                 raise ValueError('Unknown event type')

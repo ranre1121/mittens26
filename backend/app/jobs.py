@@ -85,12 +85,13 @@ def complete(
         "verdict": verdict,
         "video": {
             "duration_sec": info.duration_sec,
+            "source_start_s": info.source_start_s,
             "width": info.width,
             "height": info.height,
             "avg_fps": info.avg_fps,
             "codec": info.codec,
         },
-        "pipeline": pipeline_meta,
+        "pipeline": {key: value for key, value in pipeline_meta.items() if key != "analysis"},
         "analysis": analysis,
         "violations": [
             {

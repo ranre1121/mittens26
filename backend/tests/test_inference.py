@@ -40,6 +40,8 @@ def test_command_provider_produces_candidate_observations_not_violation(env, mak
     assert proof['source_type'] == 'model' and proof['review_status'] == 'candidate'
     assert proof['source_sha256'] == analysis['video_sha256']
     assert all('path' not in f for f in analysis['frames'])
+    assert all(set(f) == {'frame_ref', 'timestamp_s'} for f in analysis['frames'])
+    assert 'analysis' not in data['pipeline']
 
 
 @pytest.mark.parametrize('events', ["[{'event_type':'cash_bypass','start_s':0,'end_s':99,'frame_refs':['f']}]", "[{'event_type':'cash_bypass','start_s':0,'end_s':0,'frame_refs':['unknown']}]", "[{'event_type':'cash_bypass','start_s':float('nan'),'end_s':0,'frame_refs':['f']}]", "[{'event_type':'confirmed_legal_guilt','start_s':0,'end_s':0,'frame_refs':['f']}]"])
@@ -116,6 +118,39 @@ def test_unknown_pickle_checkpoint_rejected_before_import(tmp_path):
         {'id':'expanded182-specialist','weights':'last.pt','weights_sha256':'0'*64}]}))
     with pytest.raises(ValueError, match='Untrusted YOLO'):
         YoloAdapter(config)
+
+
+def test_real_qwen_provider_routes_explicitly_and_keeps_failures(make_settings, tmp_path, monkeypatch):
+    from app.pipeline import qwen_runtime
+    settings = make_settings(qwen_provider='qwen3_local', qwen_model_dir=tmp_path,
+        qwen_model_id='Qwen/Qwen3-VL-8B-Instruct', qwen_model_version=qwen_runtime.REVISION)
+    response = {'events': [], 'is_mock': False, 'provenance': {'actual_inference': True}, 'limitations': []}
+    def infer(request, cfg):
+        assert request == {'test': True} and cfg is settings
+        return response
+    monkeypatch.setattr(qwen_runtime, 'infer', infer)
+    assert QwenProvider(settings).infer({'test': True}) is response
+    def failure(*args):
+        raise RuntimeError('CUDA unavailable')
+    monkeypatch.setattr(qwen_runtime, 'infer', failure)
+    with pytest.raises(RuntimeError, match='CUDA'):
+        QwenProvider(settings).infer({})
+
+
+def test_real_qwen_environment_defaults_and_explicit_adapter_gate(monkeypatch, tmp_path):
+    from app.config import load_settings
+    monkeypatch.setenv('QWEN_PROVIDER', 'qwen3_local')
+    monkeypatch.setenv('QWEN_MODEL_DIR', str(tmp_path))
+    monkeypatch.delenv('QWEN_MODEL_ID', raising=False)
+    monkeypatch.delenv('QWEN_MODEL_VERSION', raising=False)
+    monkeypatch.delenv('JOB_TIMEOUT_SECONDS', raising=False)
+    settings = load_settings()
+    assert settings.qwen_model_id == 'Qwen/Qwen3-VL-8B-Instruct'
+    assert settings.job_timeout_seconds == 600
+    assert settings.qwen_quantization == 'bf16' and settings.qwen_adapter_dir is None
+    monkeypatch.setenv('QWEN_ADAPTER_DIR', str(tmp_path))
+    with pytest.raises(ValueError, match='experimental|EXPERIMENTAL'):
+        load_settings()
 
 
 def test_chunked_body_is_bounded_before_spooling(env):

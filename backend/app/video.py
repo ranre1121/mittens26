@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
+import math
 
 import av
 from PIL import Image
@@ -26,6 +27,7 @@ class VideoInfo:
     height: int
     avg_fps: float
     codec: str
+    source_start_s: float = 0.0
 
 
 def probe(path: Path) -> VideoInfo:
@@ -43,14 +45,18 @@ def probe(path: Path) -> VideoInfo:
             first = next(container.decode(stream), None)
             if first is None:
                 raise InvalidVideo("no decodable video frames")
-            if not duration or duration <= 0:
+            if not duration or not math.isfinite(duration) or duration <= 0:
                 raise InvalidVideo("could not determine video duration")
+            source_start = float(first.time) if first.time is not None else 0.0
+            if not math.isfinite(source_start) or source_start < 0:
+                raise InvalidVideo("nonnegative source presentation timestamps required")
             return VideoInfo(
                 duration_sec=duration,
                 width=first.width,
                 height=first.height,
                 avg_fps=float(stream.average_rate or 0),
                 codec=stream.codec_context.name,
+                source_start_s=source_start,
             )
     except InvalidVideo:
         raise

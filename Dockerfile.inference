@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2
 WORKDIR /app/backend
 COPY backend/pyproject.toml ./
 COPY backend/app ./app
-RUN pip install --no-cache-dir '.[yolo]'
+RUN pip install --no-cache-dir '.[yolo,qwen]'
 COPY rules /app/rules
 COPY backend/start-inference.sh ./start-inference.sh
 RUN mkdir -p /data /models
