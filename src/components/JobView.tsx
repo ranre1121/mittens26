@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { EvidenceFrame, JobView as Job, Violation } from "@/lib/result";
+import type { EvidenceFrame, JobView as Job } from "@/lib/result";
 import { formatBytes, formatTimecode } from "@/lib/format";
+import { JobLoading, RecordIcon, ReviewHeading } from "@/components/review/ReviewShell";
+import { AnalysisDashboard } from "@/components/review/AnalysisDashboard";
+import { ProcessingReview } from "@/components/review/ProcessingReview";
+import Button10 from "@/components/watermelon/button-10";
+import styles from "@/components/review/review.module.css";
 
 const POLL_MS = 2000;
+const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Almaty" });
 
 type Load =
   | { kind: "loading" }
@@ -33,20 +39,13 @@ function useJob(id: string): Load {
       } catch (err) {
         if (cancelled) return;
         // Keep showing the last good state; just retry a little slower.
-        setLoad((prev) =>
-          prev.kind === "ready"
-            ? prev
-            : { kind: "error", message: (err as Error).message },
-        );
+        setLoad((prev) => prev.kind === "ready" ? prev : { kind: "error", message: (err as Error).message });
         timer = setTimeout(poll, POLL_MS * 2);
       }
     }
 
     poll();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [id]);
 
   return load;
@@ -58,254 +57,95 @@ export function JobView({ id }: { id: string }) {
   const [zoomed, setZoomed] = useState<EvidenceFrame | null>(null);
 
   function seek(sec: number) {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = sec;
-    v.pause();
-    v.scrollIntoView({ behavior: "smooth", block: "center" });
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = sec;
+    video.pause();
+    video.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
   }
 
-  if (load.kind === "loading") {
-    return <p className="text-muted">Загрузка…</p>;
-  }
-  if (load.kind === "missing") {
-    return (
-      <Notice title="Проверка не найдена">
-        Проверьте ссылку или <Link href="/" className="text-accent underline">загрузите видео заново</Link>.
-      </Notice>
-    );
-  }
-  if (load.kind === "error") {
-    return <Notice title="Не удалось получить статус">{load.message}</Notice>;
-  }
+  if (load.kind === "loading") return <JobLoading />;
+  if (load.kind === "missing") return <Notice title="Проверка не найдена">Проверьте ссылку или найдите нужную запись в истории.</Notice>;
+  if (load.kind === "error") return <Notice title="Не удалось получить статус">{load.message}. Повторяем запрос автоматически.</Notice>;
 
   const { job } = load;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-xs text-muted">Проверка {job.job_id}</p>
-          <h1 className="truncate text-xl font-semibold">{job.filename}</h1>
-          <p className="text-sm text-muted">{formatBytes(job.size_bytes)}</p>
-        </div>
-        <Link
-          href="/"
-          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm hover:bg-surface-muted"
-        >
-          Проверить другое видео
-        </Link>
+    <>
+      <ReviewHeading section="Проверка" title={job.filename} back description={<span className={styles.recordMeta}>Проверка <span>№ {job.job_id}</span><span aria-hidden="true">·</span>{formatBytes(job.size_bytes)}</span>} />
+      {job.status === "done" ? <AnalysisDashboard job={job} videoRef={videoRef} onSeek={seek} onZoom={setZoomed} /> : job.status === "processing" ? <ProcessingReview job={job} videoRef={videoRef} /> : <>
+      <FailureBanner job={job} />
+      <div className={styles.reviewGrid}>
+        <section className={styles.videoPanel} aria-labelledby="source-video-title">
+          <header className={styles.panelHeading}>
+            <h2 id="source-video-title"><RecordIcon /> Исходная запись</h2>
+            <span>Видео</span>
+          </header>
+          <video ref={videoRef} src={`/api/jobs/${job.job_id}/video`} controls playsInline preload="metadata" className={styles.video} aria-label={`Исходная запись: ${job.filename}`} />
+          <div className={styles.videoCaption}>
+            <p>Исходный файл, отправленный на анализ.</p>
+            <span>{formatBytes(job.size_bytes)}</span>
+          </div>
+        </section>
+
+          <section className={styles.detailsPanel} aria-labelledby="record-details-title">
+            <h2 id="record-details-title">Сведения о проверке</h2>
+            <dl className={styles.details}>
+              <div><dt>Номер</dt><dd>{job.job_id}</dd></div>
+              <div><dt>Загружено</dt><dd><time dateTime={new Date(job.created_at).toISOString()}>{dateFormat.format(job.created_at)}</time></dd></div>
+              <div><dt>Часовой пояс</dt><dd>Алматы</dd></div>
+              <div><dt>Размер записи</dt><dd>{formatBytes(job.size_bytes)}</dd></div>
+              {job.finished_at != null && <div><dt>Завершено</dt><dd><time dateTime={new Date(job.finished_at).toISOString()}>{dateFormat.format(job.finished_at)}</time></dd></div>}
+            </dl>
+            <div className={styles.detailsNote}>
+              <span className={styles.noteMark} aria-hidden="true">i</span>
+              <p>Исходная запись сохранена. Можно загрузить видео повторно или вернуться в историю.</p>
+            </div>
+            <Link href="/history" className={styles.textLink}>Все проверки <span aria-hidden="true">→</span></Link>
+          </section>
       </div>
-
-      <StatusBanner job={job} />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="lg:sticky lg:top-6 lg:self-start">
-          <video
-            ref={videoRef}
-            src={`/api/jobs/${job.job_id}/video`}
-            controls
-            playsInline
-            preload="metadata"
-            className="aspect-video w-full rounded-xl border border-border bg-black"
-          />
-        </div>
-
-        {job.status === "done" && job.violations.length > 0 && (
-          <ol className="space-y-4">
-            {job.violations.map((v, i) => (
-              <ViolationCard
-                key={i}
-                index={i + 1}
-                violation={v}
-                onSeek={seek}
-                onZoom={setZoomed}
-              />
-            ))}
-          </ol>
-        )}
-      </div>
-
-      {zoomed && (
-        <div
-          role="dialog"
-          aria-modal
-          aria-label="Кадр-доказательство"
-          onClick={() => setZoomed(null)}
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
-        >
-          <figure className="max-w-5xl">
-            {/* eslint-disable-next-line @next/next/no-img-element -- base64 frame */}
-            <img
-              src={`data:image/jpeg;base64,${zoomed.image_base64}`}
-              alt={`Кадр на ${formatTimecode(zoomed.timestamp_sec)}`}
-              className="max-h-[85vh] w-auto rounded-lg"
-            />
-            <figcaption className="mt-2 text-center font-mono text-sm text-white">
-              {formatTimecode(zoomed.timestamp_sec)} · нажмите, чтобы закрыть
-            </figcaption>
-          </figure>
-        </div>
-      )}
-    </div>
+      </>}
+      <div className={styles.reviewFooter}><Link href="/history" className={styles.secondaryButton}>Вернуться в историю</Link><Button10 href="/#upload">Проверить другое видео <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 10h12m-5-5 5 5-5 5" /></svg></Button10></div>
+      {zoomed && <EvidenceDialog frame={zoomed} onClose={() => setZoomed(null)} onSeek={seek} />}
+    </>
   );
 }
 
-function StatusBanner({ job }: { job: Job }) {
-  if (job.status === "processing") {
-    const queued = job.stage === "queued";
-    return (
-      <div className="rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-center gap-3">
-          <span className="size-2.5 animate-pulse rounded-full bg-accent" />
-          <p className="font-medium">
-            {queued ? "В очереди на анализ" : "Идёт анализ видео"}
-          </p>
-          {!queued && (
-            <span className="ml-auto font-mono text-sm text-muted">
-              {job.progress}%
-            </span>
-          )}
-        </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-          <div
-            className="h-full rounded-full bg-accent transition-[width] duration-500"
-            style={{ width: `${queued ? 2 : Math.max(job.progress, 4)}%` }}
-          />
-        </div>
-        <p className="mt-3 text-sm text-muted">
-          Страницу можно не обновлять — результат появится автоматически.
-        </p>
-      </div>
-    );
-  }
-
-  if (job.status === "failed") {
-    return (
-      <Notice title="Не удалось обработать видео" tone="danger">
-        {job.error}
-      </Notice>
-    );
-  }
-
-  const found = job.violations.length;
-  return found === 0 ? (
-    <div className="rounded-xl border border-success/30 bg-success-soft p-5">
-      <p className="text-lg font-semibold text-success">
-        Нарушение не обнаружено
-      </p>
-      <p className="mt-1 text-sm text-muted">
-        На записи не найдено визуальных признаков нарушений из числа
-        распознаваемых сервисом.
-      </p>
-    </div>
-  ) : (
-    <div className="rounded-xl border border-danger/30 bg-danger-soft p-5">
-      <p className="text-lg font-semibold text-danger">
-        Обнаружены признаки возможных нарушений
-      </p>
-      <p className="mt-1 text-sm text-muted">
-        Найдено событий: {found}. Проверьте каждый фрагмент перед выводами.
-      </p>
-    </div>
-  );
-}
-
-function ViolationCard({
-  index,
-  violation: v,
-  onSeek,
-  onZoom,
-}: {
-  index: number;
-  violation: Violation;
-  onSeek: (sec: number) => void;
-  onZoom: (frame: EvidenceFrame) => void;
-}) {
+function FailureBanner({ job }: { job: Extract<Job, { status: "failed" }> }) {
   return (
-    <li className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="font-medium">
-          <span className="text-muted">{index}.</span> {v.type}
-        </h2>
-        <button
-          type="button"
-          onClick={() => onSeek(v.timecode_sec)}
-          className="shrink-0 rounded-md bg-accent-soft px-2 py-1 font-mono text-sm text-accent hover:opacity-80"
-          title="Перейти к моменту на видео"
-        >
-          ▶ {formatTimecode(v.timecode_sec)}
-        </button>
+    <section className={styles.verdictPanel} data-tone="error" aria-labelledby="verdict-title">
+      <div className={styles.verdictSymbol} aria-hidden="true">!</div>
+      <div className={styles.verdictCopy}>
+        <p className={styles.eyebrow}>Обработка прервана</p>
+        <h2 id="verdict-title">Не удалось обработать видео</h2>
+        <p>{job.error}</p>
       </div>
-
-      <p className="mt-2 text-sm leading-relaxed">{v.description}</p>
-
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        {v.evidence_frames.map((f, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onZoom(f)}
-            className="group relative overflow-hidden rounded-lg border border-border"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- base64 frame */}
-            <img
-              src={`data:image/jpeg;base64,${f.image_base64}`}
-              alt={`Кадр на ${formatTimecode(f.timestamp_sec)}`}
-              className="aspect-video w-full object-cover transition-transform group-hover:scale-105"
-            />
-            <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 font-mono text-[11px] text-white">
-              {formatTimecode(f.timestamp_sec)}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {v.rule && (
-        <div className="mt-4 rounded-lg bg-surface-muted p-3 text-sm">
-          <p className="text-xs text-muted">Правило и источник</p>
-          <p className="mt-0.5">
-            {v.rule.url ? (
-              <a
-                href={v.rule.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-accent underline"
-              >
-                {v.rule.document}
-              </a>
-            ) : (
-              v.rule.document
-            )}
-            {v.rule.clause && <span className="text-muted">, {v.rule.clause}</span>}
-          </p>
-        </div>
-      )}
-    </li>
+      <Link href="/#upload" className={styles.secondaryButton}>Загрузить заново</Link>
+    </section>
   );
 }
 
-function Notice({
-  title,
-  tone,
-  children,
-}: {
-  title: string;
-  tone?: "danger";
-  children: React.ReactNode;
-}) {
+function EvidenceDialog({ frame, onClose, onSeek }: { frame: EvidenceFrame; onClose: () => void; onSeek: (sec: number) => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.showModal();
+    return () => { dialog.close(); document.body.style.overflow = previousOverflow; };
+  }, []);
+
   return (
-    <div
-      className={`rounded-xl border p-5 ${
-        tone === "danger"
-          ? "border-danger/30 bg-danger-soft"
-          : "border-border bg-surface"
-      }`}
-    >
-      <p className={`font-semibold ${tone === "danger" ? "text-danger" : ""}`}>
-        {title}
-      </p>
-      <p className="mt-1 text-sm text-muted">{children}</p>
-    </div>
+    <dialog ref={dialogRef} className={styles.evidenceDialog} aria-labelledby="evidence-title" onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <header><h2 id="evidence-title">Кадр на {formatTimecode(frame.timestamp_sec)}</h2><button type="button" className={styles.dialogButton} onClick={onClose} aria-label="Закрыть кадр">×</button></header>
+      {/* eslint-disable-next-line @next/next/no-img-element -- base64 evidence at its natural proportions */}
+      <img src={`data:image/jpeg;base64,${frame.image_base64}`} alt={`Кадр на ${formatTimecode(frame.timestamp_sec)}`} />
+      <footer className={styles.evidenceActions}><p>Кадр из исходной записи</p><button type="button" className={styles.dialogButton} onClick={() => { dialogRef.current?.close(); onClose(); onSeek(frame.timestamp_sec); }}>Перейти к кадру <span aria-hidden="true">↗</span></button></footer>
+    </dialog>
   );
+}
+
+function Notice({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className={styles.notice}><span className={styles.noticeIcon} aria-hidden="true">!</span><h1>{title}</h1><p>{children}</p><div><Link href="/history" className={styles.primaryButton}>История проверок</Link><Link href="/#upload" className={styles.secondaryButton}>Новая проверка</Link></div></section>;
 }

@@ -81,14 +81,15 @@ async function handle(job) {
               { timestamp_sec: 1.5, image_base64: await frameAt(videoPath, 1.5) },
               { timestamp_sec: 2.0, image_base64: await frameAt(videoPath, 2.0) },
             ],
-            rule: {
-              document: "Пример: название нормативного акта НБРК",
-              clause: "пункт N",
-              url: "https://adilet.zan.kz/",
-            },
           },
         ];
-    await post(`/api/analyzer/jobs/${job.job_id}/result`, { violations });
+    await post(`/api/analyzer/jobs/${job.job_id}/result`, {
+      violations,
+      analysis: {
+        is_demo: true,
+        limitations: ["Результат создан mock-analyzer. Распознавание действий и проверка нормативных источников не выполнялись."],
+      },
+    });
     console.log(`done ${job.job_id}: ${violations.length} violation(s)`);
   } catch (err) {
     console.error(`failed ${job.job_id}:`, err.message);

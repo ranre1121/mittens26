@@ -22,23 +22,51 @@ browser / jury ──► Worker (Next.js) ──► D1  job rows: status, verdic
 The Worker never runs models. The case requires all models to run inside the
 team's own service, with no cloud AI APIs (section 7), and Workers can't run
 video models anyway. The **analyzer** is a separate process (a GPU box, a
-laptop, or a Cloudflare Container) that pulls jobs over HTTP. Until it exists,
-`npm run mock-analyzer` stands in for it.
+laptop, or another host) that pulls jobs over HTTP. **No real analyzer is included
+yet**; `npm run mock-analyzer` only exercises the protocol. It marks its output
+as a demonstration and does not claim to detect actions or validate rules.
+
+The case also requires offline operation after model weights are downloaded.
+The current production Cloudflare D1/R2 architecture does not establish that
+guarantee; a local storage/runtime deployment and a real local analyzer remain
+necessary before claiming full compliance. Development uses local emulation.
 
 ### Routes
 
 | Route                                 | Auth                   | Purpose                                                  |
 | ------------------------------------- | ---------------------- | -------------------------------------------------------- |
 | `/`                                   | —                      | Upload page                                              |
+| `/history`                            | —                      | Searchable check history, status filters, live updates    |
 | `/jobs/<id>`                          | —                      | Live status, verdict, violations, player that seeks       |
 | `POST /api/v1/analyze`                | `X-API-Key`            | Jury API: multipart `file` → `{ job_id }`                 |
 | `GET /api/v1/jobs/<id>`               | `X-API-Key`            | Jury API: `processing` / `done` / `failed` + result       |
 | `POST /api/jobs`, `GET /api/jobs/<id>` | —                      | Same as above for the UI, plus filename/progress          |
+| `GET /api/jobs`                       | —                      | History metadata: `q`, `status`, `page`; 20 records/page  |
+| `GET /api/jobs/activity`              | —                      | Completion notifications with a timestamp/ID cursor      |
 | `GET /api/jobs/<id>/video`            | —                      | Video stream from R2, with Range support                  |
 | `POST /api/analyzer/claim`            | `Bearer ANALYZER_TOKEN` | Next queued job (`204` when empty)                        |
 | `POST /api/analyzer/jobs/<id>/progress` | `Bearer ANALYZER_TOKEN` | `{ "progress": 0–100 }`, also a heartbeat                |
 | `POST /api/analyzer/jobs/<id>/result` | `Bearer ANALYZER_TOKEN` | `{ "violations": [...] }`                                |
 | `POST /api/analyzer/jobs/<id>/fail`   | `Bearer ANALYZER_TOKEN` | `{ "error": "..." }`                                     |
+
+### History
+
+The history page reads existing D1 job records, newest first, with a stable ID
+tie-breaker. It refreshes every five seconds while visible and when returning to
+the tab. Search matches filenames and job IDs; `%` and `_` are literal characters.
+Filters and pagination run on the server. The list/card switch keeps the same
+records and filters. Video previews are loaded near the viewport, use metadata
+and a short seek, and never autoplay. Dates use the Asia/Almaty time zone.
+Numbered pagination follows Watermelon `pagination-9`: a flat active underline,
+previous/next actions and compact page ranges.
+
+The persistent layout polls `/api/jobs/activity` every five seconds while visible.
+It starts with a server-time cursor and announces only subsequent completions,
+including old uploads that finish while new videos are being sent. Cursor pages
+use completion time plus ID, independently of history ordering. The Watermelon
+`announcement-1` banner offers the result link and dismissal. During the upload
+wave it is shown inside the overlay; navigation becomes available after sending.
+This is an in-app notification, not a browser push or background service.
 
 ### Analyzer protocol
 
@@ -56,18 +84,52 @@ Result body (validated in `src/lib/result.ts`):
     {
       "type": "Название типа нарушения",
       "timecode_sec": 44.2,
-      "description": "Что видно на видео и почему это нарушение",
+      "description": "Краткое описание возможного нарушения",
+      "explanation": {
+        "observation": "Только наблюдаемое действие",
+        "reasoning": "Почему действие может указывать на нарушение"
+      },
       "evidence_frames": [{ "timestamp_sec": 44.2, "image_base64": "/9j/4AAQ..." }],
-      "rule": { "document": "Постановление НБРК № …", "clause": "п. 12", "url": "https://adilet.zan.kz/..." }
+      "rule": { "document": "Название проверенного документа", "clause": "Точный пункт или раздел", "url": "https://example.org/verified-document" }
     }
-  ]
+  ],
+  "analysis": {
+    "checked_types": ["Тип события, который действительно проверялся"],
+    "limitations": ["Ограничение, выявленное для этой записи"],
+    "unassessed_segments": [
+      { "start_sec": 60, "end_sec": 65, "reason": "Причина невозможности оценки" }
+    ]
+  }
 }
 ```
+
+This is a format example, not a real finding or regulatory citation. The analyzer
+must supply verified document titles, clauses and HTTP(S) links. Never invent
+missing references.
 
 The server derives `verdict` from the list: any violations means `violation`,
 none means `no_violation`. `evidence_frames` must hold 1–3 JPEGs. `rule` is
 optional; the UI shows it as the regulatory reference, and the jury API passes
-it through as an extra field.
+it through as an extra field. `explanation` and `analysis` are optional, so old
+analyzers remain compatible. Analysis context is stored with the result and
+returned by the UI endpoint; the jury endpoint keeps its existing top-level
+shape. Missing sources and coverage are explicitly shown as missing.
+
+### Result screen
+
+The dashboard has a summary and metrics on the left, the source video and event
+navigation on the right, event distribution and coverage below, and a full-width
+evidence section. It has no sidebar. Counts come from actual returned events and
+frames; elapsed time includes the queue. No confidence or risk scores are invented.
+
+Each event shows its type, timecode, description, observation/reasoning, 1–3 JPEG
+frames with their own times, and document/section/link. Timecodes seek the player;
+frames open in a keyboard-accessible dialog with an action to seek that frame.
+Both exact case verdicts, empty results, limitations and demo output are covered.
+The primary “Проверить другое видео” link uses the shifting highlight from
+Watermelon `button-10`, adapted to violet metal. These three registry components
+are adapted locally using the existing React/CSS Modules stack, without a second
+button library or unused icon dependencies.
 
 ## Local development
 

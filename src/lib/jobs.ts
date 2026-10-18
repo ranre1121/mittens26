@@ -84,7 +84,7 @@ async function loadResult(row: Job): Promise<AnalysisResult | null> {
   return obj ? ((await obj.json()) as AnalysisResult) : null;
 }
 
-export async function toPublicJob(row: Job): Promise<PublicJob> {
+function publicJob(row: Job, result: AnalysisResult | null): PublicJob {
   if (row.status === "failed") {
     return {
       job_id: row.id,
@@ -93,7 +93,6 @@ export async function toPublicJob(row: Job): Promise<PublicJob> {
     };
   }
   if (row.status === "done") {
-    const result = await loadResult(row);
     if (!result) {
       return { job_id: row.id, status: "failed", error: "Result is missing" };
     }
@@ -107,15 +106,21 @@ export async function toPublicJob(row: Job): Promise<PublicJob> {
   return { job_id: row.id, status: "processing" };
 }
 
+export async function toPublicJob(row: Job): Promise<PublicJob> {
+  return publicJob(row, row.status === "done" ? await loadResult(row) : null);
+}
+
 export async function toJobView(row: Job): Promise<JobView> {
+  const result = row.status === "done" ? await loadResult(row) : null;
   return {
-    ...(await toPublicJob(row)),
+    ...publicJob(row, result),
     stage: row.status,
     filename: row.filename,
     size_bytes: row.sizeBytes,
     progress: row.progress,
     created_at: row.createdAt.getTime(),
     finished_at: row.finishedAt?.getTime() ?? null,
+    ...(result?.analysis ? { analysis: result.analysis } : {}),
   };
 }
 

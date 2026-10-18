@@ -2,8 +2,8 @@ import { z } from "zod";
 
 /**
  * What the analyzer posts back for a finished job. The shape matches the jury
- * API (section 10 of the case), plus an optional `rule` that the UI shows as
- * the regulatory reference (section 4).
+ * API (section 10 of the case), plus optional regulatory references, separate
+ * observation/reasoning and analysis coverage for the review dashboard.
  */
 export const evidenceFrameSchema = z.object({
   timestamp_sec: z.number().nonnegative(),
@@ -12,9 +12,25 @@ export const evidenceFrameSchema = z.object({
 });
 
 export const ruleSchema = z.object({
-  document: z.string().min(1),
+  document: z.string().trim().min(1),
   clause: z.string().optional(),
-  url: z.string().url().optional(),
+  url: z.string().url().refine((value) => /^https?:\/\//i.test(value), "Источник должен использовать HTTP или HTTPS").optional(),
+});
+
+export const explanationSchema = z.object({
+  observation: z.string().trim().min(1),
+  reasoning: z.string().trim().min(1),
+});
+
+export const analysisContextSchema = z.object({
+  is_demo: z.boolean().optional(),
+  checked_types: z.array(z.string().trim().min(1)).max(100).optional(),
+  limitations: z.array(z.string().trim().min(1)).max(30).optional(),
+  unassessed_segments: z.array(z.object({
+    start_sec: z.number().nonnegative(),
+    end_sec: z.number().nonnegative(),
+    reason: z.string().trim().min(1),
+  }).refine((segment) => segment.end_sec > segment.start_sec, "Конец фрагмента должен быть позже начала")).max(100).optional(),
 });
 
 export const violationSchema = z.object({
@@ -23,16 +39,19 @@ export const violationSchema = z.object({
   description: z.string().min(1),
   evidence_frames: z.array(evidenceFrameSchema).min(1).max(3),
   rule: ruleSchema.optional(),
+  explanation: explanationSchema.optional(),
 });
 
 export const analysisResultSchema = z.object({
   violations: z.array(violationSchema),
+  analysis: analysisContextSchema.optional(),
 });
 
 export type EvidenceFrame = z.infer<typeof evidenceFrameSchema>;
 export type Rule = z.infer<typeof ruleSchema>;
 export type Violation = z.infer<typeof violationSchema>;
 export type AnalysisResult = z.infer<typeof analysisResultSchema>;
+export type AnalysisContext = z.infer<typeof analysisContextSchema>;
 
 export type Verdict = "violation" | "no_violation";
 
@@ -55,4 +74,5 @@ export type JobView = PublicJob & {
   progress: number;
   created_at: number;
   finished_at: number | null;
+  analysis?: AnalysisContext;
 };
