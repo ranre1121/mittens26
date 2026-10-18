@@ -21,7 +21,7 @@ class InferenceDetector:
         detector = None
         if settings.yolo_config:
             from app.pipeline.yolo import YoloAdapter
-            detector = YoloAdapter(settings.yolo_config)
+            detector = YoloAdapter(settings.yolo_config, settings.yolo_device)
         frames = []
         # Bounded samples; JPEGs are private and served only through authenticated routes.
         for n, (ts, image) in enumerate(samples):

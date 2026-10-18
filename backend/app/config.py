@@ -54,9 +54,12 @@ class Settings:
     max_video_pixels: int = 3840 * 2160
     max_pending_jobs: int = 20
     yolo_config: Path | None = None
+    yolo_device: str = "cpu"
 
     def __post_init__(self):
         import math
+        if self.yolo_device not in {"cpu", "cuda", "cuda:0"}:
+            raise ValueError("YOLO_DEVICE must be cpu, cuda or cuda:0")
         if self.qwen_provider not in {"mock", "command"}:
             raise ValueError("QWEN_PROVIDER must be mock or command")
         if self.environment not in {"development", "production", "test"}:
@@ -86,6 +89,7 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
+        yolo_device=os.environ.get("YOLO_DEVICE", "cpu"),
         qwen_provider=os.environ.get("QWEN_PROVIDER", "mock"),
         qwen_command=tuple(json.loads(os.environ.get("QWEN_COMMAND_JSON", "[]"))),
         qwen_model_id=os.environ.get("QWEN_MODEL_ID", "qwen-stub"),

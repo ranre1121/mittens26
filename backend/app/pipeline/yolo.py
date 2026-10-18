@@ -13,7 +13,10 @@ ACCEPTED = {
 
 
 class YoloAdapter:
-    def __init__(self, config):
+    def __init__(self, config, device="cpu"):
+        if device not in {"cpu", "cuda", "cuda:0"}:
+            raise ValueError("Unsupported inference device")
+        self.device = device
         path = Path(config).resolve(strict=True)
         cfg = json.loads(path.read_text())
         if cfg.get('format') != 'datathon-detector-ensemble-v1' or len(cfg.get('models', [])) != 2:
@@ -35,7 +38,7 @@ class YoloAdapter:
     def detect(self, image):
         boxes = []
         for cfg, model in self.models:
-            result = model.predict(image, device='cpu', verbose=False, save=False, imgsz=cfg.get('imgsz', 640), conf=.25, iou=cfg['nms_iou'])[0]
+            result = model.predict(image, device=self.device, verbose=False, save=False, imgsz=cfg.get('imgsz', 640), conf=.25, iou=cfg['nms_iou'])[0]
             for box, cls, score in zip(result.boxes.xyxyn.tolist(), result.boxes.cls.tolist(), result.boxes.conf.tolist()):
                 name = result.names[int(cls)]
                 if name in cfg['class_map']:

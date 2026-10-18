@@ -28,7 +28,8 @@ def capabilities(settings):
         'model_version': settings.qwen_model_version, 'is_mock': mock,
         'status': 'mock_not_evidence' if mock else 'configured_requires_runtime_verification',
         'semantic_accuracy_validated': False, 'equipment_context_enabled': False,
-        'yolo': 'configured_cpu_only' if settings.yolo_config else 'disabled',
+        'yolo': 'configured' if settings.yolo_config else 'disabled',
+        'yolo_device': settings.yolo_device,
         'rules': 'cashrules.sequence.v1; candidate evidence cannot self-confirm',
     }
 

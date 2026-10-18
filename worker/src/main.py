@@ -1,6 +1,6 @@
 """FastAPI on a Cloudflare Python Worker: the interface API and the jury API,
-with jobs in D1 and media in R2. No analysis runs here: jobs stay queued
-("processing") until an analysis worker is connected.
+with jobs in D1 and media in R2. Analysis runs on the authenticated
+remote NVIDIA service; the edge runtime only submits and polls jobs.
 
 Uploads and video playback bypass FastAPI. The ASGI adapter copies the whole
 request body into Python memory, and ~30 MB videos would push the Worker
@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from js import AbortSignal, fetch as js_fetch
+from remote import RemoteInference, RemoteError
 from js import Headers as JsHeaders
 from js import Object
 from js import Response as JsResponse
@@ -66,6 +68,61 @@ async def d1_all(env, sql: str, *args) -> list[dict]:
     return list(res["results"] if isinstance(res, dict) else py(res.results))
 
 
+async def remote_request(url, *, method, body, headers, timeout_ms, binary):
+    options = {"method": method, "headers": js_obj(headers),
+               "signal": AbortSignal.timeout(timeout_ms), "redirect": "error"}
+    if body is not None:
+        options["body"] = body
+    response = await js_fetch(url, js_obj(options))
+    if not response.ok:
+        raise RemoteError(f"Inference service HTTP {int(response.status)}")
+    if binary:
+        return (await response.arrayBuffer()).to_bytes()
+    return json.loads(await response.text())
+
+
+def remote_client(env):
+    return RemoteInference(getattr(env, "INFERENCE_API_URL", ""),
+                           getattr(env, "INFERENCE_API_KEY", ""), remote_request,
+                           getattr(env, "INFERENCE_TIMEOUT_MS", 30000))
+
+
+async def refresh_job(env, job):
+    if job["state"] not in ("queued", "running") or not job.get("remote_job_id"):
+        return job
+    if time.time() - job["created_at"] > 3600:
+        await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote inference deadline exceeded', finished_at=? WHERE id=?").bind(time.time(), job["id"]).run()
+        return await d1_first(env, "SELECT * FROM jobs WHERE id=?", job["id"])
+    remote = remote_client(env)
+    try:
+        status = await remote.status(job["remote_job_id"])
+        if status["status"] == "failed":
+            await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote inference failed', finished_at=? WHERE id=?").bind(time.time(), job["id"]).run()
+        elif status["status"] == "done":
+            result = await remote.results(job["remote_job_id"])
+            for event in result["violations"]:
+                for frame in event.get("evidence_frames", []):
+                    name = str(frame["path"]).rsplit("/", 1)[-1]
+                    content = await remote.evidence(job["remote_job_id"], name)
+                    frame["path"] = f"evidence/{job['id']}/{name}"
+                    await env.MEDIA.put(frame["path"], to_js(content))
+            for frame in result.get("analysis", {}).get("frames", []):
+                name = str(frame.get("frame_ref", ""))
+                if EVIDENCE_NAME.fullmatch(name):
+                    frame["url"] = f"/api/jobs/{job['id']}/evidence/{name}"
+            result["job_id"] = job["id"]
+            key = f"results/{job['id']}.json"
+            await env.MEDIA.put(key, json.dumps(result))
+            # Existing D1 verdict enum cannot express candidate/insufficient decisions; preserve it in R2.
+            verdict = result.get("verdict")
+            stored_verdict = verdict if verdict in ("violation", "no_violation") else None
+            await env.DB.prepare("UPDATE jobs SET state='done', stage='done', progress=100, result_path=?, verdict=?, finished_at=? WHERE id=?").bind(key, stored_verdict, time.time(), job["id"]).run()
+    except Exception:
+        # Poll failures are retryable and never converted to successful analysis.
+        raise HTTPException(502, "Inference service temporarily unavailable")
+    return await d1_first(env, "SELECT * FROM jobs WHERE id=?", job["id"])
+
+
 # ---------- uploads and video (JavaScript side, no Python copy of the body) ----------
 
 
@@ -80,6 +137,11 @@ async def reject(js_req, body: dict, status: int):
 async def handle_upload(js_req, env, needs_key: bool):
     if needs_key and not api_key_ok(env, js_req.headers.get("x-api-key")):
         return await reject(js_req, {"detail": "Missing or invalid X-API-Key"}, 401)
+
+    try:
+        remote = remote_client(env)
+    except (RemoteError, ValueError):
+        return await reject(js_req, {"detail": "Inference service is not configured"}, 503)
 
     limit = max_upload_bytes(env)
     declared = int(js_req.headers.get("content-length") or 0)
@@ -116,7 +178,13 @@ async def handle_upload(js_req, env, needs_key: bool):
         "INSERT INTO jobs (id, state, filename, size_bytes, input_path, created_at, stage)"
         " VALUES (?, 'queued', ?, ?, ?, ?, 'queued')"
     ).bind(job_id, name, size, key, time.time()).run()
-    return js_json({"job_id": job_id})
+    try:
+        remote_id = await remote.submit(form)
+        await env.DB.prepare("UPDATE jobs SET remote_job_id=?, state='running', stage='remote_inference' WHERE id=?").bind(remote_id, job_id).run()
+    except Exception:
+        await env.DB.prepare("UPDATE jobs SET state='failed', error='Remote submission failed or timed out; outcome unknown', finished_at=? WHERE id=?").bind(time.time(), job_id).run()
+        return js_json({"job_id": job_id, "detail": "Remote submission failed; no automatic retry"}, 502)
+    return js_json({"job_id": job_id}, 202)
 
 
 async def handle_video(js_req, env, job_id: str):
@@ -162,7 +230,7 @@ async def load_job(env, job_id: str) -> dict:
     job = await d1_first(env, "SELECT * FROM jobs WHERE id = ?", job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
-    return job
+    return await refresh_job(env, job)
 
 
 async def load_result(env, job: dict) -> dict:
@@ -180,8 +248,25 @@ async def read_bytes(env, key: str) -> bytes:
 
 
 @app.get("/api/health")
-async def health():
-    return {"ok": True, "analysis": "not connected"}
+async def health(request: Request):
+    try:
+        remote_client(env_of(request))
+        configured = True
+    except (RemoteError, ValueError):
+        configured = False
+    return {"ok": True, "analysis": "remote", "remote_configured": configured,
+            "live_service_verified": False}
+
+
+@app.get("/api/v1/jobs/{job_id}/results")
+async def remote_result(job_id: str, request: Request, x_api_key: str | None = Header(default=None)):
+    env = env_of(request)
+    if not api_key_ok(env, x_api_key):
+        raise HTTPException(401, "Missing or invalid X-API-Key")
+    job = await load_job(env, job_id)
+    if job["state"] != "done":
+        raise HTTPException(409, "Result is not available")
+    return await load_result(env, job)
 
 
 @app.get("/api/v1/jobs/{job_id}")
@@ -213,7 +298,7 @@ async def jury_job(job_id: str, request: Request, x_api_key: str | None = Header
                 "evidence_frames": frames,
             }
         )
-    return {"job_id": job_id, "status": "done", "verdict": result["verdict"], "violations": violations}
+    return {"job_id": job_id, "status": "done", "verdict": result["verdict"], "violations": violations, "analysis": result.get("analysis", {})}
 
 
 # History and completion activity: same responses as backend/app/history.py.
@@ -323,6 +408,7 @@ async def ui_job(job_id: str, request: Request):
         return view
     result = await load_result(env, job)
     view["verdict"] = result["verdict"]
+    view["analysis"] = result.get("analysis", {})
     view["violations"] = [
         {
             **{k: v[k] for k in ("event_id", "event_type", "type", "timecode_sec", "start_sec", "end_sec",
@@ -343,10 +429,24 @@ async def ui_job(job_id: str, request: Request):
 @app.get("/api/jobs/{job_id}/evidence/{name}")
 async def ui_evidence(job_id: str, name: str, request: Request):
     env = env_of(request)
-    await load_job(env, job_id)
-    if not EVIDENCE_NAME.match(name):
+    job = await load_job(env, job_id)
+    if not EVIDENCE_NAME.fullmatch(name):
         raise HTTPException(404, "Evidence frame not found")
     obj = await env.MEDIA.get(f"evidence/{job_id}/{name}")
+    if obj is None and job.get("remote_job_id") and job["state"] == "done":
+        result = await load_result(env, job)
+        permitted = {str(f.get("frame_ref", "")) for f in result.get("analysis", {}).get("frames", [])}
+        permitted.update(str(f.get("path", "")).rsplit("/", 1)[-1]
+                         for event in result.get("violations", [])
+                         for f in event.get("evidence_frames", []))
+        if name not in permitted:
+            raise HTTPException(404, "Evidence frame not found")
+        try:
+            content = await remote_client(env).evidence(job["remote_job_id"], name)
+            await env.MEDIA.put(f"evidence/{job_id}/{name}", to_js(content))
+        except Exception:
+            raise HTTPException(502, "Inference evidence temporarily unavailable")
+        return Response(content, media_type="image/jpeg")
     if obj is None:
         raise HTTPException(404, "Evidence frame not found")
     return Response((await obj.arrayBuffer()).to_bytes(), media_type="image/jpeg")
